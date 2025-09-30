@@ -2,7 +2,7 @@
 define("RUTA", "http://localhost/Parcial2_MM_EZ_PV/");
 
 // archivos de configuración
-require_once "config/rutas.php";
+require_once "./config/rutas.php";
 
 // objetos 
 $rutas = new Rutas();
@@ -31,7 +31,7 @@ $rutas = new Rutas();
         <!-- Navbar -->
         <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
             <div class="container">
-                <a class="navbar-brand" href="<?= RUTA; ?>">📚 Biblioteca</a>
+                <a class="navbar-brand" href="<?= RUTA; ?>">Clínica Psicológica</a>
                 <button
                     class="navbar-toggler"
                     type="button"
