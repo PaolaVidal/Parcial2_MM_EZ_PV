@@ -20,10 +20,11 @@ class Paciente extends BaseModel {
         return $this->db->query("SELECT p.*, u.nombre, u.email FROM Paciente p JOIN Usuario u ON u.id = p.id_usuario WHERE p.estado='activo'")->fetchAll();
     }
 
-    public function obtenerPorUsuario($idUsuario){
-        $stmt = $this->db->prepare("SELECT * FROM Paciente WHERE id_usuario=? LIMIT 1");
-        $stmt->execute([$idUsuario]);
-        return $stmt->fetch();
+    public function obtenerPorUsuario(int $idUsuario): ?array {
+        $st = $this->db->prepare("SELECT * FROM Paciente WHERE id_usuario=? LIMIT 1");
+        $st->execute([$idUsuario]);
+        $row = $st->fetch();
+        return $row ?: null;
     }
 
     public function crearPorUsuario(int $idUsuario, array $data): int {
@@ -42,5 +43,34 @@ class Paciente extends BaseModel {
             $data['historial_clinico']
         ]);
         return (int)$this->db->lastInsertId();
+    }
+
+    public function getByDui(string $dui): ?array {
+        $st = $this->db->prepare("SELECT * FROM Paciente WHERE dui=? AND estado='activo' LIMIT 1");
+        $st->execute([$dui]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    public function getByCodigo(string $codigo): ?array {
+        $st = $this->db->prepare("SELECT * FROM Paciente WHERE codigo_acceso=? AND estado='activo' LIMIT 1");
+        $st->execute([$codigo]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
+    public function regenerarCodigo(int $id): string {
+        $nuevo = strtoupper(bin2hex(random_bytes(8)));
+        $st = $this->db->prepare("UPDATE Paciente SET codigo_acceso=? WHERE id=?");
+        $st->execute([$nuevo,$id]);
+        return $nuevo;
+    }
+
+    public function updateCampoPermitido(int $id, string $campo, string $valor): bool {
+        $permitidos = ['telefono','direccion','historial_clinico','genero','correo'];
+        if(!in_array($campo,$permitidos,true)) return false;
+        $sql = "UPDATE Paciente SET $campo=? WHERE id=? LIMIT 1";
+        $st = $this->db->prepare($sql);
+        return $st->execute([$valor,$id]);
     }
 }

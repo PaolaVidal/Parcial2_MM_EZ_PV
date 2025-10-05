@@ -1,42 +1,58 @@
 <?php
 /** Modelo Pago */
-require_once 'BaseModel.php';
+require_once __DIR__ . '/BaseModel.php';
 
 class Pago extends BaseModel {
-    public function crearParaCita($idCita){
-        $sql = "INSERT INTO Pago (id_cita, monto_base, monto_total, estado_pago, estado) VALUES (?, 35.00, 35.00, 'pendiente','activo')";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$idCita]);
-        return $this->db->lastInsertId();
+
+    public function crearParaCita(int $idCita, float $montoBase = 50.00): int {
+        // Evitar duplicados
+        $ex = $this->obtenerPorCita($idCita);
+        if ($ex) return (int)$ex['id'];
+        $st = $this->db->prepare("INSERT INTO Pago (id_cita,monto_base,monto_total,estado_pago,estado) VALUES (?,?,?, 'pendiente','activo')");
+        $st->execute([$idCita,$montoBase,$montoBase]);
+        return (int)$this->db->lastInsertId();
     }
 
-    public function listar(){
-        $sql = "SELECT pg.*, ct.id_paciente, ct.id_psicologo FROM Pago pg JOIN Cita ct ON ct.id = pg.id_cita WHERE pg.estado='activo'";
-        return $this->db->query($sql)->fetchAll();
+    public function obtener(int $id): ?array {
+        $st = $this->db->prepare("SELECT * FROM Pago WHERE id=?");
+        $st->execute([$id]);
+        $r = $st->fetch();
+        return $r ?: null;
     }
 
-    public function obtener($id){
-        $stmt = $this->db->prepare("SELECT * FROM Pago WHERE id=?");
-        $stmt->execute([$id]);
-        return $stmt->fetch();
+    public function obtenerPorCita(int $idCita): ?array {
+        $st = $this->db->prepare("SELECT * FROM Pago WHERE id_cita=? LIMIT 1");
+        $st->execute([$idCita]);
+        $r = $st->fetch();
+        return $r ?: null;
     }
 
-    public function recalcularTotal($id){
-        // Suma de extras
-        $stmt = $this->db->prepare("SELECT COALESCE(SUM(monto),0) as extras FROM PagoExtras WHERE id_pago=?");
-        $stmt->execute([$id]);
-        $extras = (float)$stmt->fetch()['extras'];
-
-        $pago = $this->obtener($id);
-        $montoTotal = (float)$pago['monto_base'] + $extras;
-
-        $upd = $this->db->prepare("UPDATE Pago SET monto_total=? WHERE id=?");
-        $upd->execute([$montoTotal, $id]);
-        return $montoTotal;
+    public function marcarPagado(int $id): bool {
+        $st = $this->db->prepare("UPDATE Pago SET estado_pago='pagado' WHERE id=?");
+        return $st->execute([$id]);
     }
 
-    public function marcarPagado($id){
-        $stmt = $this->db->prepare("UPDATE Pago SET estado_pago='pagado' WHERE id=?");
-        $stmt->execute([$id]);
+    public function listarPaciente(int $idPaciente): array {
+        $sql = "SELECT p.* FROM Pago p
+                JOIN Cita c ON c.id = p.id_cita
+                WHERE c.id_paciente=? AND p.estado='activo'
+                ORDER BY p.fecha DESC";
+        $st = $this->db->prepare($sql);
+        $st->execute([$idPaciente]);
+        return $st->fetchAll();
+    }
+
+    public function listarPsicologo(int $idPsico): array {
+        $sql = "SELECT p.* FROM Pago p
+                JOIN Cita c ON c.id = p.id_cita
+                WHERE c.id_psicologo=? AND p.estado='activo'
+                ORDER BY p.fecha DESC";
+        $st = $this->db->prepare($sql);
+        $st->execute([$idPsico]);
+        return $st->fetchAll();
+    }
+
+    public function listarTodos(): array {
+        return $this->db->query("SELECT * FROM Pago ORDER BY fecha DESC")->fetchAll();
     }
 }

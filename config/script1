@@ -1,0 +1,179 @@
+/*
+SQLyog Ultimate v11.11 (64 bit)
+MySQL - 5.5.5-10.4.32-MariaDB : Database - psicologia
+*********************************************************************
+*/
+
+/*!40101 SET NAMES utf8 */;
+
+/*!40101 SET SQL_MODE=''*/;
+
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+CREATE DATABASE /*!32312 IF NOT EXISTS*/`psicologia` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci */;
+
+USE `psicologia`;
+
+/*Table structure for table `cita` */
+
+DROP TABLE IF EXISTS `cita`;
+
+CREATE TABLE `cita` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_paciente` int(11) NOT NULL,
+  `id_psicologo` int(11) NOT NULL,
+  `fecha_hora` datetime NOT NULL,
+  `estado_cita` enum('pendiente','realizada','cancelada') DEFAULT 'pendiente',
+  `motivo_consulta` text DEFAULT NULL,
+  `qr_code` varchar(255) DEFAULT NULL,
+  `estado` enum('activo','inactivo') DEFAULT 'activo',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `qr_code` (`qr_code`),
+  KEY `fk_cita_paciente` (`id_paciente`),
+  KEY `fk_cita_psicologo` (`id_psicologo`),
+  CONSTRAINT `fk_cita_paciente` FOREIGN KEY (`id_paciente`) REFERENCES `paciente` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_cita_psicologo` FOREIGN KEY (`id_psicologo`) REFERENCES `psicologo` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `evaluacion` */
+
+DROP TABLE IF EXISTS `evaluacion`;
+
+CREATE TABLE `evaluacion` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_cita` int(11) NOT NULL,
+  `estado_emocional` int(11) DEFAULT NULL CHECK (`estado_emocional` between 1 and 10),
+  `comentarios` text DEFAULT NULL,
+  `estado` enum('activo','inactivo') DEFAULT 'activo',
+  PRIMARY KEY (`id`),
+  KEY `fk_evaluacion_cita` (`id_cita`),
+  CONSTRAINT `fk_evaluacion_cita` FOREIGN KEY (`id_cita`) REFERENCES `cita` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `paciente` */
+
+DROP TABLE IF EXISTS `paciente`;
+
+CREATE TABLE `paciente` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_usuario` int(11) DEFAULT NULL,
+  `dui` varchar(20) DEFAULT NULL,
+  `codigo_acceso` varchar(64) DEFAULT NULL,
+  `fecha_nacimiento` date DEFAULT NULL,
+  `genero` enum('masculino','femenino','otro') DEFAULT NULL,
+  `correo` varchar(100) DEFAULT NULL,
+  `direccion` varchar(255) DEFAULT NULL,
+  `telefono` varchar(20) DEFAULT NULL,
+  `historial_clinico` text DEFAULT NULL,
+  `estado` enum('activo','inactivo') DEFAULT 'activo',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `dui` (`dui`),
+  UNIQUE KEY `codigo_acceso` (`codigo_acceso`),
+  KEY `fk_paciente_usuario` (`id_usuario`),
+  CONSTRAINT `fk_paciente_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuario` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `pago` */
+
+DROP TABLE IF EXISTS `pago`;
+
+CREATE TABLE `pago` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_cita` int(11) NOT NULL,
+  `monto_base` decimal(10,2) DEFAULT 35.00,
+  `monto_total` decimal(10,2) DEFAULT 35.00,
+  `fecha` datetime DEFAULT current_timestamp(),
+  `estado_pago` enum('pendiente','pagado') DEFAULT 'pendiente',
+  `estado` enum('activo','inactivo') DEFAULT 'activo',
+  PRIMARY KEY (`id`),
+  KEY `fk_pago_cita` (`id_cita`),
+  CONSTRAINT `fk_pago_cita` FOREIGN KEY (`id_cita`) REFERENCES `cita` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `pagoextras` */
+
+DROP TABLE IF EXISTS `pagoextras`;
+
+CREATE TABLE `pagoextras` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_pago` int(11) NOT NULL,
+  `descripcion` varchar(255) NOT NULL,
+  `monto` decimal(10,2) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `fk_pagoextras_pago` (`id_pago`),
+  CONSTRAINT `fk_pagoextras_pago` FOREIGN KEY (`id_pago`) REFERENCES `pago` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `psicologo` */
+
+DROP TABLE IF EXISTS `psicologo`;
+
+CREATE TABLE `psicologo` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_usuario` int(11) NOT NULL,
+  `especialidad` varchar(100) DEFAULT NULL,
+  `experiencia` text DEFAULT NULL,
+  `horario` text DEFAULT NULL,
+  `estado` enum('activo','inactivo') DEFAULT 'activo',
+  PRIMARY KEY (`id`),
+  KEY `fk_psicologo_usuario` (`id_usuario`),
+  CONSTRAINT `fk_psicologo_usuario` FOREIGN KEY (`id_usuario`) REFERENCES `usuario` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `solicitudcambio` */
+
+DROP TABLE IF EXISTS `solicitudcambio`;
+
+CREATE TABLE `solicitudcambio` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_paciente` int(11) NOT NULL,
+  `campo` varchar(50) NOT NULL,
+  `valor_nuevo` text NOT NULL,
+  `estado` enum('pendiente','aprobado','rechazado') DEFAULT 'pendiente',
+  `fecha` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `fk_sc_paciente` (`id_paciente`),
+  CONSTRAINT `fk_sc_paciente` FOREIGN KEY (`id_paciente`) REFERENCES `paciente` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `ticket_pago` */
+
+DROP TABLE IF EXISTS `ticket_pago`;
+
+CREATE TABLE `ticket_pago` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id_pago` int(11) NOT NULL,
+  `codigo` varchar(50) DEFAULT NULL,
+  `fecha_emision` datetime DEFAULT current_timestamp(),
+  `numero_ticket` varchar(50) DEFAULT NULL,
+  `qr_code` varchar(255) DEFAULT NULL,
+  `estado` enum('activo','inactivo') DEFAULT 'activo',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `codigo` (`codigo`),
+  UNIQUE KEY `numero_ticket` (`numero_ticket`),
+  UNIQUE KEY `qr_code` (`qr_code`),
+  KEY `fk_ticket_pago` (`id_pago`),
+  CONSTRAINT `fk_ticket_pago` FOREIGN KEY (`id_pago`) REFERENCES `pago` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*Table structure for table `usuario` */
+
+DROP TABLE IF EXISTS `usuario`;
+
+CREATE TABLE `usuario` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `nombre` varchar(100) NOT NULL,
+  `email` varchar(100) NOT NULL,
+  `passwordd` varchar(100) NOT NULL,
+  `rol` enum('admin','psicologo') NOT NULL,
+  `estado` enum('activo','inactivo') DEFAULT 'activo',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`)
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;

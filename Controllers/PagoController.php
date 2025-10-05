@@ -3,6 +3,8 @@
 require_once __DIR__ . '/../models/Pago.php';
 require_once __DIR__ . '/../models/PagoExtra.php';
 require_once __DIR__ . '/../models/TicketPago.php';
+require_once __DIR__ . '/../models/Paciente.php';
+require_once __DIR__ . '/../models/Psicologo.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
 
 class PagoController {
@@ -10,8 +12,8 @@ class PagoController {
     private string $viewsPath;
 
     public function __construct() {
-        // Cambia a ../vistas/ si tu carpeta real es distinta
-        $this->viewsPath = __DIR__ . '/../views/';
+        // Ajusta mayúsculas según tu carpeta real
+        $this->viewsPath = __DIR__ . '/../Views/';
     }
 
     private function render(string $vista, array $data = []): void {
@@ -25,15 +27,33 @@ class PagoController {
     }
 
     public function index(): void {
-        $model = new Pago();
-        $pagos = $model->listar();
-        $this->render('pagos/listado', ['pagos' => $pagos]);
+        if(!isset($_SESSION['usuario'])){
+            echo '<div class="alert alert-warning">No autenticado.</div>';
+            return;
+        }
+        $rol = $_SESSION['usuario']['rol'];
+        $pagoModel = new Pago();
+        $pagos = [];
+
+        if ($rol === 'paciente') {
+            $paciente = (new Paciente())->obtenerPorUsuario((int)$_SESSION['usuario']['id']);
+            $idPac = $paciente['id'] ?? 0;
+            if ($idPac) {
+                $pagos = $pagoModel->listarPaciente($idPac);
+            }
+        } elseif ($rol === 'psicologo') {
+            $psico = (new Psicologo())->obtenerPorUsuario((int)$_SESSION['usuario']['id']);
+            $idPs = $psico['id'] ?? 0;
+            if ($idPs) {
+                $pagos = $pagoModel->listarPsicologo($idPs);
+            }
+        } else {
+            $pagos = $pagoModel->listarTodos();
+        }
+
+        $this->render('pagos/listado', ['pagos'=>$pagos, 'rol'=>$rol]);
     }
 
-    /**
-     * Mostrar / gestionar un pago: /pago/ver/{id}
-     * @param mixed $id
-     */
     public function ver($id): void {
         $id = (int)$id;
         if ($id <= 0) {
@@ -45,7 +65,6 @@ class PagoController {
         $extraModel  = new PagoExtra();
         $ticketModel = new TicketPago();
 
-        // Procesar acciones POST
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
             $accion = $_POST['accion'];
 
@@ -61,11 +80,9 @@ class PagoController {
             }
 
             if ($accion === 'marcar_pagado') {
-                // Recalcular antes de marcar
                 $pagoModel->recalcularTotal($id);
                 $pagoModel->marcarPagado($id);
 
-                // Crear ticket si no existe
                 $ticket = $ticketModel->obtenerPorPago($id);
                 if (!$ticket) {
                     try {
@@ -74,13 +91,7 @@ class PagoController {
                         $codigo = 'TCK-' . time();
                     }
                     $numero = date('YmdHis') . '-' . $id;
-
-                    // URL del ticket (ajusta según acción real en TicketController)
-                    // Ejemplos posibles:
-                    // $ticketUrl = RUTA . 'ticket/ver/' . $id;
-                    // o si la acción se llama verPago:
                     $ticketUrl = RUTA . 'ticket/verPago/' . $id;
-
                     $qr = QRHelper::generarQR('PAGO:' . $id . ' URL:' . $ticketUrl, 'ticket_' . $id);
 
                     $ticketModel->crear([
@@ -92,12 +103,11 @@ class PagoController {
                 }
             }
 
-            // Post/Redirect/Get para evitar reprocesos al recargar
             header('Location: ' . RUTA . 'pago/ver/' . $id);
             exit;
         }
 
-        $pago   = $pagoModel->obtener($id);
+        $pago = $pagoModel->obtener($id);
         if (!$pago) {
             echo '<div class="alert alert-warning">Pago no encontrado.</div>';
             return;

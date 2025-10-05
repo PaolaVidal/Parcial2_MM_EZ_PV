@@ -36,16 +36,19 @@ class Contenido {
 
 $contenido = new Contenido();
 
-// ----- Autenticación básica (similar a tu lógica anterior) -----
+// ----- Autenticación básica (ahora pacientes NO inician sesión) -----
 $urlActual = $_GET['url'] ?? '';
 if (!isset($_SESSION['usuario'])) {
     $publica = false;
-    // Rutas públicas (login, registro y página inicial)
-    if ($urlActual === '' || strpos($urlActual, 'auth') === 0 || strpos($urlActual, 'login') === 0) {
-        $publica = true;
+    // Prefijos / rutas públicas permitidas
+    $rutasPublicas = ['','auth/login','public','public/'];
+    foreach ($rutasPublicas as $rp) {
+        if ($urlActual === $rp || str_starts_with($urlActual, $rp)) {
+            $publica = true; break;
+        }
     }
     if (!$publica) {
-        header('Location: ' . RUTA . 'auth/login'); // ajusta a tu controlador real de login
+        header('Location: ' . RUTA . 'auth/login');
         exit;
     }
 }
@@ -111,19 +114,29 @@ if (isset($_GET['url'])) {
             </button>
             <div class="collapse navbar-collapse" id="nav">
                 <ul class="navbar-nav ms-auto">
-                    <?php if (isset($_SESSION['usuario'])): ?>
-                        <li class="nav-item"><a class="nav-link" href="<?= RUTA; ?>cita"><i class="fas fa-calendar-alt me-1"></i> Citas</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= RUTA; ?>pago"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= RUTA; ?>ticket"><i class="fas fa-ticket me-1"></i> Tickets</a></li>
-                        <li class="nav-item">
-                            <span class="nav-link">Hola, <?= htmlspecialchars($_SESSION['usuario']['nombre'] ?? '') ?>
-                                (<?= htmlspecialchars($_SESSION['usuario']['rol'] ?? '') ?>)</span>
-                        </li>
-                        <li class="nav-item"><a class="nav-link" href="<?= RUTA; ?>auth/logout"><i class="fas fa-sign-out-alt me-1"></i> Salir</a></li>
-                    <?php else: ?>
-                        <li class="nav-item"><a class="nav-link" href="<?= RUTA; ?>auth/login"><i class="fas fa-sign-in-alt me-1"></i> Iniciar sesión</a></li>
-                        <li class="nav-item"><a class="nav-link" href="<?= RUTA; ?>auth/registrar"><i class="fas fa-user-plus me-1"></i> Registrarse</a></li>
-                    <?php endif; ?>
+                    <?php if (isset($_SESSION['usuario'])):
+    $rol = $_SESSION['usuario']['rol'] ?? '';
+?>
+    <?php if ($rol === 'psicologo'): ?>
+        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>cita/pendientes"><i class="fas fa-list me-1"></i> Citas Pendientes</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>pago"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>ticket"><i class="fas fa-ticket me-1"></i> Tickets</a></li>
+    <?php elseif ($rol === 'admin'): ?>
+        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>cita"><i class="fas fa-calendar-check me-1"></i> Todas las Citas</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>pago"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>ticket"><i class="fas fa-ticket me-1"></i> Tickets</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>admin/solicitudes"><i class="fas fa-edit me-1"></i> Solicitudes</a></li>
+    <?php endif; ?>
+    <li class="nav-item">
+        <span class="nav-link">Hola, <?= htmlspecialchars($_SESSION['usuario']['nombre'] ?? '') ?> (<?= htmlspecialchars($rol) ?>)</span>
+    </li>
+    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/logout"><i class="fas fa-sign-out-alt me-1"></i> Salir</a></li>
+<?php else: ?>
+    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/login"><i class="fas fa-sign-in-alt me-1"></i> Iniciar sesión</a></li>
+    <!-- Registro eliminado -->
+    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>public/disponibilidad">Psicólogos</a></li>
+    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>public/portal">Portal Paciente</a></li>
+<?php endif; ?>
                 </ul>
             </div>
         </div>
@@ -181,3 +194,20 @@ if (isset($_GET['url'])) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js" crossorigin="anonymous"></script>
 </body>
 </html>
+<?php
+function usuarioRol(): string {
+    return $_SESSION['usuario']['rol'] ?? '';
+}
+function requiereRol(array $roles): void {
+    if (!isset($_SESSION['usuario']) || !in_array(usuarioRol(), $roles, true)) {
+        http_response_code(403);
+        echo '<div class="alert alert-danger">Acceso denegado</div>';
+        exit;
+    }
+}
+
+// filepath: c:\xampp\htdocs\CICLO8_Desarrollo_Web_Multiplataforma\Parcial2_MM_EZ_PV\index.php
+// ...existing router resolve...
+$ctrl = $_GET['c'] ?? 'public';
+$accion = $_GET['a'] ?? 'portal';
+// si controlador = public usar PublicController

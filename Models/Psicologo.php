@@ -1,18 +1,23 @@
 <?php
 /** Modelo Psicologo */
-require_once 'BaseModel.php';
+require_once __DIR__ . '/BaseModel.php';
 
 class Psicologo extends BaseModel {
-    public function crear($data){
-        $sql = "INSERT INTO Psicologo (id_usuario, especialidad, experiencia, horario, estado) VALUES (?,?,?,?, 'activo')";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            $data['id_usuario'], $data['especialidad'], $data['experiencia'], $data['horario']
-        ]);
-        return $this->db->lastInsertId();
+
+    public function obtenerPorUsuario(int $idUsuario): ?array {
+        $st = $this->db->prepare("SELECT * FROM Psicologo WHERE id_usuario=? LIMIT 1");
+        $st->execute([$idUsuario]);
+        $r = $st->fetch();
+        return $r ?: null;
     }
 
-    public function listar(){
-        return $this->db->query("SELECT p.*, u.nombre as nombre_usuario FROM Psicologo p JOIN Usuario u ON u.id = p.id_usuario WHERE p.estado='activo'")->fetchAll();
+    public function listarActivos(): array {
+        // Une con Usuario para mostrar nombre
+        $sql = "SELECT ps.id, u.nombre
+                FROM Psicologo ps
+                JOIN Usuario u ON u.id = ps.id_usuario
+                WHERE ps.estado='activo' AND u.estado='activo'
+                ORDER BY u.nombre ASC";
+        return $this->db->query($sql)->fetchAll();
     }
 }
