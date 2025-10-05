@@ -1,6 +1,6 @@
 <?php
 /** Modelo Paciente */
-require_once 'BaseModel.php';
+require_once __DIR__ . '/BaseModel.php';
 
 class Paciente extends BaseModel {
     /**
@@ -24,5 +24,23 @@ class Paciente extends BaseModel {
         $stmt = $this->db->prepare("SELECT * FROM Paciente WHERE id_usuario=? LIMIT 1");
         $stmt->execute([$idUsuario]);
         return $stmt->fetch();
+    }
+
+    public function crearPorUsuario(int $idUsuario, array $data): int {
+        $st = $this->db->prepare(
+            "INSERT INTO Paciente
+             (id_usuario, fecha_nacimiento, genero, correo, direccion, telefono, historial_clinico, estado)
+             VALUES (?,?,?,?,?,?,?, 'activo')"
+        );
+        $st->execute([
+            $idUsuario,
+            $data['fecha_nacimiento'],
+            $data['genero'],
+            $data['correo'],
+            $data['direccion'],
+            $data['telefono'],
+            $data['historial_clinico']
+        ]);
+        return (int)$this->db->lastInsertId();
     }
 }

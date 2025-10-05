@@ -1,32 +1,42 @@
 <?php
 /** Modelo Usuario */
-require_once 'BaseModel.php';
+require_once __DIR__ . '/BaseModel.php';
 
 class Usuario extends BaseModel {
-    public function crear($data){
-        $sql = "INSERT INTO Usuario (nombre, email, passwordd, rol, estado) VALUES (?,?,?,?,?)";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            $data['nombre'], $data['email'], password_hash($data['passwordd'], PASSWORD_BCRYPT), $data['rol'] ?? 'paciente', 'activo'
+
+    public function emailExiste(string $email): bool {
+        $st = $this->db->prepare("SELECT id FROM Usuario WHERE email=? LIMIT 1");
+        $st->execute([$email]);
+        return (bool)$st->fetchColumn();
+    }
+
+    public function crear(array $data): int {
+        $rol = $data['rol'] ?? 'paciente';
+        $st = $this->db->prepare(
+            "INSERT INTO Usuario (nombre,email,passwordd,rol,estado) VALUES (?,?,?,?, 'activo')"
+        );
+        $st->execute([
+            $data['nombre'],
+            $data['email'],
+            password_hash($data['password'], PASSWORD_BCRYPT),
+            $rol
         ]);
-        return $this->db->lastInsertId();
+        return (int)$this->db->lastInsertId();
     }
 
-    public function obtenerPorEmail($email){
-        $stmt = $this->db->prepare("SELECT * FROM Usuario WHERE email = ? LIMIT 1");
-        $stmt->execute([$email]);
-        return $stmt->fetch();
+    private function obtenerPorEmail(string $email): ?array {
+        $st = $this->db->prepare("SELECT * FROM Usuario WHERE email=? LIMIT 1");
+        $st->execute([$email]);
+        $row = $st->fetch();
+        return $row ?: null;
     }
 
-    /**
-     * Autentica usuario por email y contraseña plana.
-     * Retorna array usuario o false si credenciales inválidas.
-     */
-    public function autenticar($email, $password){
+    public function autenticar(string $email, string $password): ?array {
         $usuario = $this->obtenerPorEmail($email);
-        if($usuario && password_verify($password, $usuario['passwordd'])){
+        if ($usuario && password_verify($password, $usuario['passwordd'])) {
+            unset($usuario['passwordd']);
             return $usuario;
         }
-        return false;
+        return null;
     }
 }
