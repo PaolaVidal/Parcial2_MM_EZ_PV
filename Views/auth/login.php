@@ -17,9 +17,6 @@
         <input type="password" name="password" class="form-control" required>
       </div>
       <button class="btn btn-primary w-100">Entrar</button>
-      <div class="text-center mt-2">
-        <a href="<?= RUTA ?>auth/registrar">Crear cuenta</a>
-      </div>
     </form>
   </div>
 </div>
