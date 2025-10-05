@@ -1,54 +1,106 @@
 <?php
-/** Controlador de Citas */
-require_once 'BaseController.php';
+/** Controlador de Citas (router: /cita/accion/id) */
 require_once __DIR__ . '/../models/Cita.php';
 require_once __DIR__ . '/../models/Pago.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
-require_once __DIR__ . '/../helpers/UrlHelper.php';
 
-class CitaController extends BaseController {
-    public function index(){
-        $model = new Cita();
-        $citas = $model->listar();
-        $this->view('citas/listado', ['citas'=>$citas]);
+class CitaController {
+
+    // Ajusta la ruta base de vistas si tu carpeta se llama diferente (views, vistas, etc.)
+    private string $viewsPath;
+
+    public function __construct() {
+        $this->viewsPath = __DIR__ . '/../views/'; // cambia a ../vistas/ si corresponde
     }
 
-    public function crear(){
-        if($_SERVER['REQUEST_METHOD']==='POST'){
-            $citaModel = new Cita();
-            // Generar QR con ID temporal? Primero insert sin QR? -> Estrategia: generar después
-            // Insertamos con QR temporal y luego actualizamos: más simple es generar QR con placeholder y luego reemplazar.
-            $qrTemp = QRHelper::generarQR('Creando cita...');
-            $id = $citaModel->crear([
-                'id_paciente' => $_POST['id_paciente'],
-                'id_psicologo'=> $_POST['id_psicologo'],
-                'fecha_hora'  => $_POST['fecha_hora'],
-                'motivo_consulta' => $_POST['motivo_consulta'],
-                'qr_code' => $qrTemp
-            ]);
-            // Re-generar QR definitivo con enlace
-            $url = base_url() . 'index.php?controller=Cita&action=ver&id=' . $id;
-            $qrDef = QRHelper::generarQR('CITA:' . $id . ' URL:' . $url, 'cita_'.$id);
-            // Actualizar ruta QR
-            $citaModel->db->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$qrDef, $id]);
+    private function render(string $vista, array $data = []): void {
+        $file = $this->viewsPath . $vista . '.php';
+        if (!file_exists($file)) {
+            echo '<div class="alert alert-danger">Vista no encontrada: ' . htmlspecialchars($vista) . '</div>';
+            return;
+        }
+        extract($data);
+        require $file;
+    }
 
-            // Crear Pago relacionado
+    public function index(): void {
+        $model = new Cita();
+        $citas = $model->listar();
+        $this->render('citas/listado', ['citas' => $citas]);
+    }
+
+    public function crear(): void {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+            $idPaciente   = (int)($_POST['id_paciente']   ?? 0);
+            $idPsicologo  = (int)($_POST['id_psicologo']  ?? 0);
+            $fechaHora    = trim($_POST['fecha_hora']     ?? '');
+            $motivo       = trim($_POST['motivo_consulta']?? '');
+
+            if ($idPaciente <= 0 || $idPsicologo <= 0 || $fechaHora === '' || $motivo === '') {
+                echo '<div class="alert alert-danger">Completa todos los campos obligatorios.</div>';
+                $this->render('citas/crear');
+                return;
+            }
+
+            $citaModel = new Cita();
+
+            // QR temporal
+            $qrTemp = QRHelper::generarQR('Creando cita...');
+
+            $id = $citaModel->crear([
+                'id_paciente'     => $idPaciente,
+                'id_psicologo'    => $idPsicologo,
+                'fecha_hora'      => $fechaHora,
+                'motivo_consulta' => $motivo,
+                'qr_code'         => $qrTemp
+            ]);
+
+            if (!$id) {
+                echo '<div class="alert alert-danger">Error al crear la cita.</div>';
+                $this->render('citas/crear');
+                return;
+            }
+
+            // URL definitiva (router nuevo)
+            $urlDetalle = RUTA . 'cita/ver/' . $id;
+            // Generar QR definitivo (puedes ajustar el contenido)
+            $qrDef = QRHelper::generarQR('CITA:' . $id . ' URL:' . $urlDetalle, 'cita_' . $id);
+
+            // Actualizar QR en DB (ideal: método en modelo; aquí directo si tu modelo expone ->db)
+            try {
+                $citaModel->db->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$qrDef, $id]);
+            } catch (Throwable $e) {
+                // No detiene el flujo, pero avisa
+                error_log('Error actualizando QR cita '.$id.': '.$e->getMessage());
+            }
+
+            // Crear pago relacionado
             $pagoModel = new Pago();
             $pagoModel->crearParaCita($id);
 
-            header('Location: ?controller=Cita&action=index');
+            header('Location: ' . RUTA . 'cita');
             exit;
         }
-        $this->view('citas/crear');
+
+        $this->render('citas/crear');
     }
 
-    public function ver(){
-        $id = $_GET['id'] ?? null;
-        if(!$id){ echo 'ID requerido'; return; }
+    public function ver($id): void {
+        $id = (int)$id;
+        if ($id <= 0) {
+            echo '<div class="alert alert-danger">ID inválido.</div>';
+            return;
+        }
         $model = new Cita();
         $cita = $model->obtener($id);
-        $this->view('citas/ver', ['cita'=>$cita]);
+        if (!$cita) {
+            echo '<div class="alert alert-warning">Cita no encontrada.</div>';
+            return;
+        }
+        $this->render('citas/ver', ['cita' => $cita]);
     }
 
-    // Método baseUrl eliminado: usar helper base_url()
+    // Si necesitaras eliminar, editar, etc., agrega métodos similares:
+    // public function eliminar($id) { ... }
 }
