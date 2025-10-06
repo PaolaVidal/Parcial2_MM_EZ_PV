@@ -8,6 +8,7 @@
     'minutos'=>'Los minutos deben ser 00 o 30',
     'pasado'=>'La hora seleccionada ya pasó',
     'horario'=>'Fuera del horario permitido (08:00-17:00)',
+  'fuera_horario'=>'La hora seleccionada no está dentro de tu horario configurado',
     'ocupado'=>'Ya existe una cita en ese horario',
     'ex'=>'Error interno, reintenta' 
   ];
@@ -54,65 +55,7 @@
   </div>
 </div>
 
-<div class="row">
-  <div class="col-md-6">
-    <h4>Pendientes</h4>
-    <table class="table table-sm table-striped">
-  <thead><tr><th>ID</th><th>Paciente</th><th>Fecha/Hora</th><th>QR</th><th>Acciones</th></tr></thead>
-      <tbody>
-        <?php foreach($data['pendientes'] as $c): ?>
-          <tr>
-            <td><?= (int)$c['id'] ?></td>
-            <td><?= htmlspecialchars($c['id_paciente']) ?></td>
-            <td><?= htmlspecialchars($c['fecha_hora']) ?></td>
-            <td class="text-center">
-              <?php $img = 'qrcodes/cita_id_'.$c['id'].'.png'; ?>
-              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="abrirQR('<?= htmlspecialchars($img) ?>')" title="Ver QR">&#128439;</button>
-            </td>
-            <td>
-              <!-- Botón de token removido: ahora QR basado sólo en ID -->
-            </td>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
-  <div class="col-md-6">
-    <h4>Realizadas (últimas)</h4>
-    <table class="table table-sm table-striped">
-      <thead><tr><th>ID</th><th>Paciente</th><th>Fecha/Hora</th><th>Pago</th><th>Acciones</th></tr></thead>
-      <tbody>
-        <?php foreach($data['realizadas'] as $c): ?>
-          <tr>
-            <td><?= (int)$c['id'] ?></td>
-            <td><?= htmlspecialchars($c['id_paciente']) ?></td>
-            <td><?= htmlspecialchars($c['fecha_hora']) ?></td>
-            <td>
-              <?php // Determinar pago
-              $pagoModel = new Pago();
-              $p = $pagoModel->obtenerPorCita((int)$c['id']);
-              if($p && $p['estado_pago']==='pagado'){
-                echo '<span class="badge bg-success">Pagado</span>';
-              } else {
-                echo '<span class="badge bg-warning text-dark">Pendiente</span>';
-              }
-              ?>
-            </td>
-            <td>
-              <?php if(!$p || $p['estado_pago']!=='pagado'): ?>
-                <form method="post" action="<?= RUTA ?>index.php?url=psicologo/pagar" style="display:inline" onsubmit="return confirm('Marcar pagado?');">
-                  <input type="hidden" name="id_cita" value="<?= (int)$c['id'] ?>">
-                  <button class="btn btn-sm btn-success">Marcar Pagado</button>
-                </form>
-              <?php endif; ?>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-  </div>
-</div>
-<hr>
+<!-- Se eliminan tablas separadas de pendientes/realizadas: ahora sólo tabla unificada -->
 <h4>Listado de Citas</h4>
 <div class="row g-3 mb-2">
   <div class="col-md-3">
@@ -138,8 +81,8 @@
 <table class="table table-sm table-striped" id="tablaCitas">
   <thead><tr><th>ID</th><th>Paciente</th><th>Fecha/Hora</th><th>Estado</th><th>QR</th><th>Pago</th><th>Acciones</th></tr></thead>
   <tbody>
-    <?php $pagoModel = new Pago(); ?>
-    <?php foreach(array_merge($data['pendientes'],$data['realizadas']) as $c): ?>
+    <?php $pagoModel = new Pago(); $todas = array_merge($data['pendientes'],$data['realizadas']); ?>
+    <?php foreach($todas as $c): ?>
       <?php $p = $pagoModel->obtenerPorCita((int)$c['id']); ?>
       <tr data-estado="<?= htmlspecialchars($c['estado_cita']) ?>" data-fecha="<?= substr($c['fecha_hora'],0,10) ?>" data-paciente="<?= htmlspecialchars($c['id_paciente']) ?>">
         <td><?= (int)$c['id'] ?></td>
@@ -185,9 +128,10 @@ function cargarSlots(){
   const interval = document.getElementById('intervalo').value;
   const cont = document.getElementById('slots');
   cont.innerHTML = '<em>Cargando...</em>';
-  // Intento principal: ajax=slots sobre la misma acción (evita problemas de routing)
-  const url = BASE + 'index.php?url=psicologo/citas&ajax=slots&fecha='+encodeURIComponent(fecha)+'&interval='+interval;
-  fetch(url).then(r=> r.ok ? r.text():Promise.reject({r}))
+  const urlPrimary = BASE + 'index.php?url=psicologo/slots&fecha='+encodeURIComponent(fecha)+'&interval='+interval;
+  const urlFallback = BASE + 'index.php?url=psicologo/citas&ajax=slots&fecha='+encodeURIComponent(fecha)+'&interval='+interval;
+  const tryFetch = (u)=>fetch(u).then(r=> r.ok ? r.text():Promise.reject());
+  tryFetch(urlPrimary).catch(()=>tryFetch(urlFallback))
     .then(txt=>{ let j; try{ j=JSON.parse(txt);}catch(e){ throw {parse:true,txt}; } return j; })
     .then(j=>{
       if(j.error){
@@ -200,15 +144,8 @@ function cargarSlots(){
       if(!j.slots || !j.slots.length){ cont.innerHTML='<span class="text-muted">Sin horas libres</span>'; return; }
       cont.innerHTML = j.slots.map(h=>`<button type="button" class="btn btn-sm btn-outline-primary m-1" onclick="selSlot('${h}')">${h}</button>`).join('');
     })
-    .catch(err=>{ 
-      if(err && err.parse){
-        cont.innerHTML='<span class="text-danger">Respuesta no válida</span>'; 
-        console.error('Respuesta HTML/devuelta en lugar de JSON:', err.txt.substring(0,200));
-      } else {
-        cont.innerHTML='<span class="text-danger">Error cargando</span>';
-        console.error('Slots error',err);
-      }
-    });
+    .catch(err=>{ if(err && err.parse){cont.innerHTML='<span class="text-danger">Respuesta no válida</span>'; console.error(err.txt);} else { cont.innerHTML='<span class="text-danger">Error cargando</span>'; } });
+  return; // fin función
 }
 function selSlot(h){
   const fecha = document.getElementById('fechaSel').value;

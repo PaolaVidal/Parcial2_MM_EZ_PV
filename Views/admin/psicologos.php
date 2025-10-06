@@ -9,13 +9,12 @@
   <div class="col-md-2"><input name="password" type="text" class="form-control form-control-sm" placeholder="Password" required></div>
   <div class="col-md-2"><input name="especialidad" class="form-control form-control-sm" placeholder="Especialidad"></div>
   <div class="col-md-2"><input name="experiencia" class="form-control form-control-sm" placeholder="Experiencia"></div>
-  <div class="col-md-2"><input name="horario" class="form-control form-control-sm" placeholder="Horario"></div>
   <div class="col-12 mt-2"><button class="btn btn-sm btn-primary">Crear</button></div>
 </form>
 
 <table class="table table-sm align-middle">
   <thead class="table-light">
-    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Especialidad</th><th>Experiencia</th><th>Horario</th><th>Estado</th><th>Nuevo Password</th><th>Acciones</th></tr>
+    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Especialidad</th><th>Experiencia</th><th>Estado</th><th>Nuevo Password</th><th>Acciones</th><th>Horarios</th></tr>
   </thead>
   <tbody>
   <?php foreach($psicologos as $p): 
@@ -32,7 +31,6 @@
         <td><input name="email" value="<?= htmlspecialchars($p['email']??'') ?>" class="form-control form-control-sm"></td>
         <td><input name="especialidad" value="<?= htmlspecialchars($p['especialidad']??'') ?>" class="form-control form-control-sm"></td>
         <td><input name="experiencia" value="<?= htmlspecialchars($p['experiencia']??'') ?>" class="form-control form-control-sm"></td>
-        <td><input name="horario" value="<?= htmlspecialchars($p['horario']??'') ?>" class="form-control form-control-sm"></td>
         <td>
           <button name="accion" value="estado" class="btn btn-sm <?= $btnEstadoCls ?>" onclick="this.form.estado.value='<?= $nuevoEstado ?>';">
             <?= $labelEstado ?>
@@ -43,6 +41,7 @@
         <td class="text-nowrap">
           <button name="accion" value="editar" class="btn btn-sm btn-outline-success">Guardar</button>
         </td>
+        <td><a class="btn btn-sm btn-outline-primary" href="<?= url('admin','horarios') ?>?ps=<?= (int)$p['id'] ?>" title="Gestionar horarios">Gestionar</a></td>
       </form>
     </tr>
   <?php endforeach; ?>

@@ -10,4 +10,9 @@ abstract class BaseModel {
     public function __construct() {
         $this->db = Database::getInstance()->getConnection();
     }
+
+    /** Acceso controlado al PDO para otros servicios/controladores */
+    public function pdo(): PDO {
+        return $this->db;
+    }
 }

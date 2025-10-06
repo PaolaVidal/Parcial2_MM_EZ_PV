@@ -36,14 +36,14 @@ class PsicologoController {
     }
 
     private function countEstadoDia(int $idPsico,string $estado,string $fecha): int {
-        $db = (new Cita())->getDb();
+        $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado_cita=? AND DATE(fecha_hora)=?");
         $st->execute([$idPsico,$estado,$fecha]);
         return (int)$st->fetchColumn();
     }
 
     private function ingresosPsicologo(int $idPsico): float {
-        $db = (new Pago())->getDb();
+        $db = (new Pago())->pdo();
         $st = $db->prepare("SELECT COALESCE(SUM(p.monto_total),0) FROM Pago p JOIN Cita c ON c.id=p.id_cita WHERE c.id_psicologo=? AND p.estado_pago='pagado'");
         $st->execute([$idPsico]);
         return (float)$st->fetchColumn();
@@ -84,15 +84,25 @@ class PsicologoController {
         // No permitir pasado
         $now = new DateTime();
         if($fh <= $now){ header('Location: index.php?controller=Psicologo&action=citas&err=pasado'); return; }
-        // Rango horario permitido 08:00 - 17:00 (inicio inclusive, fin exclusivo)
-        $hora = (int)$fh->format('H'); $minuto = (int)$fh->format('i');
-        if($hora < 8 || ($hora >= 17) || ($hora===16 && $minuto>30)){ header('Location: index.php?controller=Psicologo&action=citas&err=horario'); return; }
+        // Validar contra horarios configurados en Horario_Psicologo
+        require_once __DIR__ . '/../models/HorarioPsicologo.php';
+        $diaSemanaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
+        $diaBD = $diaSemanaMap[$fh->format('D')] ?? 'lunes';
+    $dbChk2 = (new Cita())->pdo();
+        $stH = $dbChk2->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana=?");
+        $stH->execute([$idPsico,$diaBD]);
+        $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
+        $enRango = false;
+        foreach($bloques as $b){
+            if($fh->format('H:i:s') >= $b['hora_inicio'] && $fh->format('H:i:s') < $b['hora_fin']){ $enRango = true; break; }
+        }
+        if(!$enRango){ header('Location: index.php?controller=Psicologo&action=citas&err=fuera_horario'); return; }
         $fecha = $fh->format('Y-m-d H:i:s');
         // Evitar choque con una existente misma fecha_hora para ese psicólogo
-        $dbChk = (new Cita())->getDb();
+    $dbChk = (new Cita())->pdo();
         $stChk = $dbChk->prepare('SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND fecha_hora=? AND estado=\'activo\'' );
         $stChk->execute([$idPsico,$fecha]);
-        if((int)$stChk->fetchColumn() > 0){ header('Location: index.php?controller=Psicologo&action=citas&err=ocupado'); return; }
+    if((int)$stChk->fetchColumn() > 0){ header('Location: index.php?controller=Psicologo&action=citas&err=ocupado'); return; }
         // Verificar paciente existe
         $pacM = new Paciente();
         $pac = $pacM->getById($idPaciente);
@@ -110,8 +120,8 @@ class PsicologoController {
             // Generar QR usando solo el id
             try { QRHelper::generarQR('CITA:'.$id,'cita','cita_id_'.$id.'.png'); } catch(Throwable $e){}
             // Actualizar campo qr_code con el propio id para búsquedas simples
-            $db = (new Cita())->getDb();
-            $db->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$id,$id]);
+            $pdo = (new Cita())->pdo();
+            $pdo->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$id,$id]);
             header('Location: index.php?controller=Psicologo&action=citas&ok=1');
             return;
         } catch(Throwable $e){
@@ -163,26 +173,32 @@ class PsicologoController {
         $hoy = new DateTime('today');
         $fReq = DateTime::createFromFormat('Y-m-d',$fecha);
         if($fReq < $hoy){ echo json_encode(['error'=>'fecha_pasada']); return; }
-        $citaM = new Cita();
-        // Obtener citas existentes del día
-        $db = $citaM->getDb();
-        $st = $db->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
-        $st->execute([$idPsico,$fecha]);
-        $ocupadas = array_map(fn($r)=>substr($r['fecha_hora'],11,5), $st->fetchAll(PDO::FETCH_ASSOC));
-        $slots=[];
-        $start = new DateTime($fecha.' 08:00:00');
-        $end   = new DateTime($fecha.' 17:00:00');
-        $now = new DateTime();
-        while($start < $end){
-            $h = $start->format('H:i');
-            // Excluir horas ya ocupadas y horas pasadas si la fecha es hoy
-            $isToday = $fecha === $now->format('Y-m-d');
-            if(!in_array($h,$ocupadas,true) && (!$isToday || $start > $now)) {
-                $slots[]=$h;
+        // Obtener horarios configurados para ese día de semana
+    require_once __DIR__ . '/../models/HorarioPsicologo.php';
+    $diaSemanaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
+    $diaBD = $diaSemanaMap[$fReq->format('D')] ?? 'lunes';
+    $pdo = (new Cita())->pdo();
+    $stH = $pdo->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana=? ORDER BY hora_inicio");
+    $stH->execute([$idPsico,$diaBD]);
+    $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
+    if(!$bloques){ echo json_encode(['fecha'=>$fecha,'interval'=>$interval,'slots'=>[],'dia'=>$diaBD]); return; }
+    $stC = $pdo->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
+    $stC->execute([$idPsico,$fecha]);
+    $ocupadas = array_map(fn($r)=>substr($r['fecha_hora'],11,5), $stC->fetchAll(PDO::FETCH_ASSOC));
+        $slots=[]; $now = new DateTime(); $isToday = $fecha === $now->format('Y-m-d');
+        foreach($bloques as $b){
+            $ini = new DateTime($fecha.' '.$b['hora_inicio']);
+            $fin = new DateTime($fecha.' '.$b['hora_fin']);
+            while($ini < $fin){
+                $h = $ini->format('H:i');
+                if($ini < $fin && !in_array($h,$ocupadas,true) && (!$isToday || $ini > $now)){
+                    $slots[] = $h;
+                }
+                $ini->modify('+'.$interval.' minutes');
             }
-            $start->modify('+'.$interval.' minutes');
         }
-        echo json_encode(['fecha'=>$fecha,'interval'=>$interval,'slots'=>$slots]);
+        sort($slots);
+        echo json_encode(['fecha'=>$fecha,'interval'=>$interval,'slots'=>$slots,'dia'=>$diaBD]);
     }
 
     public function pagar(): void {
