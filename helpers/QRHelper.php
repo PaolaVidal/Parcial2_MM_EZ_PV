@@ -4,6 +4,14 @@
  * Se espera que el archivo vendor/phpqrcode/qrlib.php exista.
  */
 class QRHelper {
+    /** Indica si la librería está disponible en vendor o libs */
+    public static function disponible(): bool {
+        foreach([__DIR__.'/../libs/phpqrcode/qrlib.php', __DIR__.'/../vendor/phpqrcode/qrlib.php'] as $c){
+            if(file_exists($c)) return true;
+        }
+        return false;
+    }
+
     /**
      * Genera un QR y retorna ruta relativa pública.
      * @param string $texto Contenido a codificar (token)
@@ -11,10 +19,11 @@ class QRHelper {
      * @param string|null $nombreForzado Nombre de archivo exacto (sin ruta) opcional.
      */
     public static function generarQR(string $texto, string $nombreArchivoPrefix = 'qr', ?string $nombreForzado = null){        
-        $rutaLib = __DIR__ . '/../vendor/phpqrcode/qrlib.php';
-        if(!file_exists($rutaLib)) {
-            throw new Exception('Librería phpqrcode no encontrada. Asegúrate de descargar qrlib.php.');
+        $rutaLib = null;
+        foreach([__DIR__.'/../libs/phpqrcode/qrlib.php', __DIR__.'/../vendor/phpqrcode/qrlib.php'] as $c){
+            if(file_exists($c)){ $rutaLib = $c; break; }
         }
+        if(!$rutaLib){ throw new Exception('Librería phpqrcode no encontrada en libs/ ni vendor/.'); }
         require_once $rutaLib;
 
         $dir = __DIR__ . '/../public/qrcodes/';

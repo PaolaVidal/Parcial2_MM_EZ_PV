@@ -97,9 +97,8 @@
         <td><?= htmlspecialchars($c['fecha_hora']) ?></td>
         <td><span class="badge bg-<?= $c['estado_cita']==='pendiente'?'warning text-dark':'info' ?>"><?= htmlspecialchars($c['estado_cita']) ?></span></td>
         <td class="text-center">
-          <?php $img = 'qrcodes/cita_id_'.$c['id'].'.png'; ?>
-          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="abrirQR('<?= htmlspecialchars($img) ?>')" title="Ver QR">&#128439;</button>
-        </td>
+          <?php $img = htmlspecialchars($c['qr_code']); ?>
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="mostrarQRModal('<?= $img ?>','CITA:<?= (int)$c['id'] ?>')" title="Ver QR">QR</button>
         <td>
           <?php if($p && $p['estado_pago']==='pagado'): ?>
             <span class="badge bg-success">Pagado</span>
@@ -194,4 +193,123 @@ function limpiarFiltros(){
   document.getElementById('fTexto').value='';
   filtrarTabla();
 }
+
+// Mostrar modal con el QR
+function mostrarQRModal(rutaRel, contenido){
+  try {
+    let base = BASE;
+    // Normalizar base (asegurar termina en /)
+    if(!base.endsWith('/')) base += '';
+    let ruta = rutaRel || '';
+    // Quitar posible prefijo public/
+    ruta = ruta.replace(/^public\//,'');
+    // Prepend base si no es absoluta ni ya incluye BASE
+    if(!/^https?:/i.test(ruta) && !ruta.startsWith(base)){
+      ruta = base + ruta;
+    }
+    const img = document.getElementById('qrModalImg');
+    const span = document.getElementById('qrModalCode');
+    span.textContent = contenido || '';
+    img.alt = 'QR '+contenido;
+    img.removeAttribute('data-error');
+    img.onerror = function(){
+      if(img.getAttribute('data-error')==='2') return; // ya intentamos fallback
+      const tried = img.getAttribute('data-error');
+      if(!tried){
+        // Primer fallo: intentar prefijo public/
+        img.setAttribute('data-error','1');
+        const clean = img.src.replace(/\?t=\d+/,'');
+        if(!/\/public\//.test(clean)){
+          let altSrc = clean.replace(/(qrcodes\/.*)$/,'public/$1');
+          img.src = altSrc + (altSrc.includes('?')?'':'?t='+(Date.now()));
+          return;
+        }
+      }
+      // Segundo fallo: marcar error final
+      img.setAttribute('data-error','2');
+      img.classList.add('border-danger');
+      img.style.opacity='0.4';
+      span.textContent = 'No se pudo cargar la imagen ('+rutaRel+')';
+    };
+    img.onload = function(){
+      img.classList.remove('border-danger');
+      img.style.opacity='1';
+    };
+    img.src = ruta + (ruta.includes('?')?'':'?t='+(Date.now())); // evitar cache si se regeneró
+    if(window.bootstrap && bootstrap.Modal){
+      const modalEl = document.getElementById('qrModal');
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.show();
+    } else {
+      alert('Bootstrap JS no cargado, abre en nueva pestaña');
+      window.open(img.src,'_blank','noopener');
+    }
+  } catch(e){
+    console.error('Error mostrando modal QR', e);
+    alert('No se pudo mostrar el QR');
+  }
+}
 </script>
+
+<!-- Modal QR -->
+<div class="modal fade" id="qrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Código QR de la Cita</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="qrModalImg" src="" alt="QR" class="img-fluid border p-1 mb-2" style="max-width:240px;background:#fff"/>
+        <div class="small text-muted">Contenido: <span id="qrModalCode"></span></div>
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="window.open(document.getElementById('qrModalImg').src,'_blank','noopener')">Abrir en nueva pestaña</button>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+      <script>
+      // Fallback: definir mostrarQRModal si por alguna razón no quedó en el bloque anterior
+      if (typeof mostrarQRModal !== 'function') {
+        console.warn('Fallback: definiendo mostrarQRModal al final de la vista');
+        function mostrarQRModal(rutaRel, contenido){
+          try {
+            let base = (typeof BASE!=='undefined'?BASE:'');
+            if(base && !base.endsWith('/')) base += '';
+            let ruta = (rutaRel||'').replace(/^public\//,'');
+            if(!/^https?:/i.test(ruta) && base && !ruta.startsWith(base)) ruta = base + ruta;
+            const img = document.getElementById('qrModalImg');
+            const span = document.getElementById('qrModalCode');
+            if(!img || !span){ alert('Modal no presente en el DOM'); return; }
+            span.textContent = contenido || '';
+            img.alt = 'QR '+contenido;
+            img.onerror = function(){
+              if(img.getAttribute('data-error')==='2') return;
+              const tried = img.getAttribute('data-error');
+              if(!tried){
+                img.setAttribute('data-error','1');
+                const clean = img.src.replace(/\?t=\d+/,'');
+                if(!/\/public\//.test(clean)){
+                  let altSrc = clean.replace(/(qrcodes\/.*)$/,'public/$1');
+                  img.src = altSrc + (altSrc.includes('?')?'':'?t='+(Date.now()));
+                  return;
+                }
+              }
+              img.setAttribute('data-error','2');
+              span.textContent='No se pudo cargar el QR';
+              img.classList.add('border-danger');
+            };
+            img.src = ruta + (ruta.includes('?')?'':'?t='+(Date.now()));
+            if(window.bootstrap && bootstrap.Modal){
+              const modalEl = document.getElementById('qrModal');
+              bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            } else {
+              window.open(img.src,'_blank','noopener');
+            }
+          } catch(e){ console.error(e); alert('Error mostrando QR'); }
+        }
+      }
+      </script>

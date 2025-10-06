@@ -59,9 +59,15 @@ class PsicologoController {
         $idPsico = (int)$_SESSION['usuario']['id'];
         $citaM = new Cita();
         $pacM = new Paciente();
-        $list = $citaM->listarPsicologo($idPsico);
-        $pacientes = $pacM->listarTodos();
-        $this->render('psicologo/citas',[ 'data'=>$list,'pacientes'=>$pacientes ]);
+    $list = $citaM->listarPsicologo($idPsico);
+    // Unificar y ordenar por fecha_hora ASC manteniendo estado_cita original
+    $todas = array_merge($list['pendientes'],$list['realizadas']);
+    usort($todas, function($a,$b){ return strcmp($a['fecha_hora'],$b['fecha_hora']); });
+    // Repartir de nuevo en pendientes/realizadas ya ordenadas si se necesita en otras partes
+    $list['pendientes'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='pendiente'));
+    $list['realizadas'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='realizada'));
+    $pacientes = $pacM->listarTodos();
+    $this->render('psicologo/citas',[ 'data'=>$list,'pacientes'=>$pacientes ]);
     }
 
     public function crear(): void {
@@ -128,7 +134,8 @@ class PsicologoController {
             // Generar QR usando el id y guardar la RUTA final (qrcodes/cita_id_ID.png)
             $final = null;
             try {
-                $final = QRHelper::generarQR('CITA:'.$id,'cita','cita_id_'.$id.'.png');
+                // Pasamos nombre sin .png porque el helper lo añade si falta
+                $final = QRHelper::generarQR('CITA:'.$id,'cita','cita_id_'.$id);
             } catch(Throwable $e){ /* si falla dejamos placeholder */ }
             $pdo = (new Cita())->pdo();
             // Si QR ok guardamos ruta, si no al menos guardamos el id para mantener único
