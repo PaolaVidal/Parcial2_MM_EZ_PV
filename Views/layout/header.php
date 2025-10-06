@@ -24,12 +24,13 @@
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Admin</a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="<?= url('Admin','dashboard') ?>">Dashboard</a></li>
-                <li><a class="dropdown-item" href="<?= url('Admin','usuarios') ?>">Usuarios</a></li>
-                <li><a class="dropdown-item" href="<?= url('Admin','psicologos') ?>">Psicólogos</a></li>
-                <li><a class="dropdown-item" href="<?= url('Admin','citas') ?>">Citas</a></li>
-                <li><a class="dropdown-item" href="<?= url('Admin','pagos') ?>">Pagos</a></li>
-                <li><a class="dropdown-item" href="<?= url('Solicitud','index') ?>">Solicitudes</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','dashboard') ?>">Dashboard</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','usuarios') ?>">Usuarios</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','pacientes') ?>">Pacientes</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','psicologos') ?>">Psicólogos</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','citas') ?>">Citas</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','pagos') ?>">Pagos</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','solicitudes') ?>">Solicitudes</a></li>
               </ul>
             </li>
           <?php endif; ?>

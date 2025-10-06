@@ -138,24 +138,24 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
                 <ul class="navbar-nav ms-auto">
                     <?php if (isset($_SESSION['usuario'])):
     $rol = $_SESSION['usuario']['rol'] ?? '';
-?>
-    <?php if ($rol === 'psicologo'): ?>
-        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>cita/pendientes"><i class="fas fa-list me-1"></i> Citas Pendientes</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>pago"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>ticket"><i class="fas fa-ticket me-1"></i> Tickets</a></li>
+    if ($rol === 'psicologo'): ?>
+        <li class="nav-item"><a class="nav-link" href="<?= url('cita','pendientes') ?>"><i class="fas fa-list me-1"></i>Citas Pendientes</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('pago') ?>"><i class="fas fa-dollar-sign me-1"></i>Pagos</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('ticket') ?>"><i class="fas fa-ticket me-1"></i>Tickets</a></li>
     <?php elseif ($rol === 'admin'): ?>
-        <li class="nav-item"><a class="nav-link" href="<?= url('admin','citas') ?>"><i class="fas fa-calendar-check me-1"></i> Todas las Citas</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= url('admin','pagos') ?>"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= url('admin','dashboard') ?>"><i class="fas fa-chart-line me-1"></i> Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= url('admin','solicitudes') ?>"><i class="fas fa-edit me-1"></i> Solicitudes</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','dashboard') ?>">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','pacientes') ?>">Pacientes</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','psicologos') ?>">Psicólogos</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','citas') ?>">Citas</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','pagos') ?>">Pagos</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','solicitudes') ?>">Solicitudes</a></li>
     <?php endif; ?>
     <li class="nav-item">
         <span class="nav-link">Hola, <?= htmlspecialchars($_SESSION['usuario']['nombre'] ?? '') ?> (<?= htmlspecialchars($rol) ?>)</span>
     </li>
-    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/logout"><i class="fas fa-sign-out-alt me-1"></i> Salir</a></li>
+    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/logout"><i class="fas fa-sign-out-alt me-1"></i>Salir</a></li>
 <?php else: ?>
-    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/login"><i class="fas fa-sign-in-alt me-1"></i> Iniciar sesión</a></li>
-    <!-- Registro eliminado -->
+    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/login"><i class="fas fa-sign-in-alt me-1"></i>Iniciar sesión</a></li>
     <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>public/disponibilidad">Psicólogos</a></li>
     <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>public/portal">Portal Paciente</a></li>
 <?php endif; ?>

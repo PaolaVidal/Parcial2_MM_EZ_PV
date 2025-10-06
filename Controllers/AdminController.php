@@ -59,24 +59,101 @@ class AdminController {
     /* ================ Psicologos ================ */
     public function psicologos(): void {
         $this->requireAdmin();
-        $psModel = new Psicologo();
+        $psModel  = new Psicologo();
         $usrModel = new Usuario();
         if($_SERVER['REQUEST_METHOD']==='POST'){
             $accion = $_POST['accion'] ?? '';
-            if($accion==='crear'){
-                $nombre=trim($_POST['nombre']??'');
-                $email=trim($_POST['email']??'');
-                $pass=$_POST['password']??'';
-                $esp=trim($_POST['especialidad']??'');
-                if($nombre && $email && $pass){
-                    $idU = $usrModel->crear(['nombre'=>$nombre,'email'=>$email,'password'=>$pass,'rol'=>'psicologo']);
-                    $psModel->crear($idU,[ 'especialidad'=>$esp ]);
+            try {
+                if($accion==='crear'){
+                    $idU = $usrModel->crear([
+                        'nombre'=>trim($_POST['nombre']),
+                        'email'=>trim($_POST['email']),
+                        'password'=>$_POST['password'],
+                        'rol'=>'psicologo'
+                    ]);
+                    $psModel->crear($idU,[
+                        'especialidad'=>trim($_POST['especialidad']??''),
+                        'experiencia'=>trim($_POST['experiencia']??''),
+                        'horario'=>trim($_POST['horario']??'')
+                    ]);
+                } elseif($accion==='editar'){
+                    $idPs = (int)$_POST['id'];
+                    $idU  = (int)$_POST['id_usuario'];
+                    $usrModel->actualizar($idU,[
+                        'nombre'=>trim($_POST['nombre']),
+                        'email'=>trim($_POST['email'])
+                    ]);
+                    if(($np=trim($_POST['new_password']??''))!==''){
+                        $usrModel->actualizarPassword($idU,$np);
+                    }
+                    $psModel->actualizar($idPs,[
+                        'especialidad'=>trim($_POST['especialidad']??''),
+                        'experiencia'=>trim($_POST['experiencia']??''),
+                        'horario'=>trim($_POST['horario']??'')
+                    ]);
+                } elseif($accion==='estado'){
+                    $usrModel->cambiarEstado((int)$_POST['id_usuario'], $_POST['estado']);
                 }
+            } catch(Exception $e){
+                $_SESSION['flash_error']=$e->getMessage();
             }
+            header('Location: '.url('admin','psicologos')); exit;
         }
-        $lista = $psModel->listarTodos();
-        $masSolic = $psModel->masSolicitados();
-        $this->render('psicologos',[ 'psicologos'=>$lista,'masSolic'=>$masSolic ]);
+        $psicologos = $psModel->listarTodos();
+        $masSolic = method_exists($psModel,'masSolicitados')?$psModel->masSolicitados():[];
+        $this->render('psicologos',[
+            'psicologos'=>$psicologos,
+            'masSolic'=>$masSolic,
+            'error'=>$_SESSION['flash_error']??''
+        ]);
+        unset($_SESSION['flash_error']);
+    }
+
+    public function pacientes(): void {
+        $this->requireAdmin();
+        $pacModel = new Paciente();
+        $usrModel = new Usuario();
+
+        if($_SERVER['REQUEST_METHOD']==='POST'){
+            $accion = $_POST['accion'] ?? '';
+            try {
+                if($accion==='crear'){
+                    $idU = $usrModel->crear([
+                        'nombre'=>trim($_POST['nombre']),
+                        'email'=>trim($_POST['email']),
+                        'password'=>$_POST['password'],
+                        'rol'=>'paciente'
+                    ]);
+                    $pacModel->crear($idU,[
+                        'telefono'=>trim($_POST['telefono'] ?? ''),
+                        'direccion'=>trim($_POST['direccion'] ?? '')
+                    ]);
+                } elseif($accion==='editar'){
+                    $idPac = (int)$_POST['id'];
+                    $idU   = (int)$_POST['id_usuario'];
+                    $usrModel->actualizar($idU,[
+                        'nombre'=>trim($_POST['nombre']),
+                        'email'=>trim($_POST['email'])
+                    ]);
+                    $newPass = trim($_POST['new_password'] ?? '');
+                    if($newPass!==''){
+                        $usrModel->actualizarPassword($idU,$newPass);
+                    }
+                    $pacModel->actualizar($idPac,[
+                        'telefono'=>trim($_POST['telefono'] ?? ''),
+                        'direccion'=>trim($_POST['direccion'] ?? '')
+                    ]);
+                } elseif($accion==='estado'){
+                    $usrModel->cambiarEstado((int)$_POST['id_usuario'], $_POST['estado']);
+                } elseif($accion==='eliminar'){
+                    $pacModel->eliminar((int)$_POST['id']);
+                }
+            } catch(Exception $e){}
+            header('Location: '.url('admin','pacientes')); exit;
+        }
+
+        $lista = $pacModel->listarTodos();
+        $this->render('pacientes',[ 'pacientes'=>$lista ]);
     }
 
     /* ================== Citas =================== */
