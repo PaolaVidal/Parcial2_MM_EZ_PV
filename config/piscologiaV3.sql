@@ -1,8 +1,8 @@
 -- ===========================================
--- BASE DE DATOS: psicologia
+-- BASE DE DATOS: psicologia2
 -- ===========================================
-CREATE DATABASE IF NOT EXISTS psicologia;
-USE psicologia;
+CREATE DATABASE IF NOT EXISTS psicologia2;
+USE psicologia2;
 
 -- ============================
 -- 1. USUARIOS
@@ -31,19 +31,20 @@ CREATE TABLE Psicologo (
 );
 
 -- ============================
--- 3. PACIENTES (sin credenciales)
+-- 3. PACIENTES (actualizado)
 -- ============================
 CREATE TABLE Paciente (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(120) NOT NULL,
+    email VARCHAR(150) NULL,
+    telefono VARCHAR(40) NULL,
+    direccion VARCHAR(200) NULL,
+    estado ENUM('activo','inactivo') DEFAULT 'activo',
     dui VARCHAR(20) UNIQUE,
-    codigo_acceso VARCHAR(64) UNIQUE, -- usado para verificar identidad en citas
+    codigo_acceso VARCHAR(64) UNIQUE,
     fecha_nacimiento DATE,
     genero ENUM('masculino', 'femenino', 'otro'),
-    correo VARCHAR(100),
-    direccion VARCHAR(255),
-    telefono VARCHAR(20),
-    historial_clinico TEXT,
-    estado ENUM('activo', 'inactivo') DEFAULT 'activo'
+    historial_clinico TEXT
 );
 
 -- ============================
@@ -70,8 +71,8 @@ CREATE TABLE Cita (
 CREATE TABLE Pago (
     id INT AUTO_INCREMENT PRIMARY KEY,
     id_cita INT NOT NULL,
-    monto_base DECIMAL(10,2),  -- tarifa base (ej. 35)
-    monto_total DECIMAL(10,2), -- base + extras (si los hay)
+    monto_base DECIMAL(10,2),
+    monto_total DECIMAL(10,2),
     fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
     estado_pago ENUM('pendiente', 'pagado') DEFAULT 'pendiente',
     estado ENUM('activo', 'inactivo') DEFAULT 'activo',

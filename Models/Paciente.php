@@ -4,147 +4,126 @@ require_once __DIR__ . '/BaseModel.php';
 
 class Paciente extends BaseModel {
 
-    /* ========= Creación ========= */
+    private string $tabla = 'Paciente';
+    private string $colNombre = 'nombre';
+    private ?string $colEmail = 'email';
+    private ?string $colTelefono = 'telefono';
+    private ?string $colDireccion = 'direccion';
+    private ?string $colEstado = 'estado';
+    private ?string $colDui = 'dui';
+    private ?string $colCodigoAcceso = 'codigo_acceso';
+    private ?string $colFechaNac = 'fecha_nacimiento';
+    private ?string $colGenero = 'genero';
+    private ?string $colHistorial = 'historial_clinico';
 
-    // Alta mínima (usada por AdminController->pacientes)
-    public function crear(int $idUsuario, array $data = []): bool {
-        $st = $this->db->prepare(
-            "INSERT INTO pacientes (id_usuario, telefono, direccion, estado)
-             VALUES (:u, :tel, :dir, 'activo')"
-        );
-        return $st->execute([
-            ':u'   => $idUsuario,
-            ':tel' => $data['telefono']  ?? '',
-            ':dir' => $data['direccion'] ?? ''
-        ]);
+    public function __construct(){
+        parent::__construct();
+        $this->detectarColumnas();
     }
 
-    // Alta completa opcional (si tus columnas existen)
-    public function crearCompleto(int $idUsuario, array $data): int {
-        $st = $this->db->prepare(
-            "INSERT INTO pacientes
-             (id_usuario, fecha_nacimiento, genero, direccion, telefono, historial_clinico, dui, codigo_acceso, estado)
-             VALUES (:u,:fn,:g,:dir,:tel,:hist,:dui,:code,'activo')"
-        );
-        $code = strtoupper(bin2hex(random_bytes(6)));
-        $st->execute([
-            ':u'    => $idUsuario,
-            ':fn'   => $data['fecha_nacimiento'] ?? null,
-            ':g'    => $data['genero'] ?? null,
-            ':dir'  => $data['direccion'] ?? '',
-            ':tel'  => $data['telefono'] ?? '',
-            ':hist' => $data['historial_clinico'] ?? null,
-            ':dui'  => $data['dui'] ?? null,
-            ':code' => $code
-        ]);
+    private function detectarColumnas(): void {
+        try {
+            $cols = $this->db->query("DESCRIBE {$this->tabla}")->fetchAll(PDO::FETCH_COLUMN);
+            $pick = function(array $cands) use ($cols){
+                foreach($cands as $c) foreach($cols as $col) if(strtolower($col)===strtolower($c)) return $col;
+                return null;
+            };
+            $this->colNombre       = $pick(['nombre']) ?? $this->colNombre;
+            $this->colEmail        = $pick(['email','correo']);
+            $this->colTelefono     = $pick(['telefono','tel']);
+            $this->colDireccion    = $pick(['direccion','dir']);
+            $this->colEstado       = $pick(['estado']);
+            $this->colDui          = $pick(['dui']);
+            $this->colCodigoAcceso = $pick(['codigo_acceso','codigo']);
+            $this->colFechaNac     = $pick(['fecha_nacimiento','nacimiento']);
+            $this->colGenero       = $pick(['genero','sexo']);
+            $this->colHistorial    = $pick(['historial_clinico','historial']);
+        } catch(Throwable $e){}
+    }
+
+    private function c(?string $c): bool { return !empty($c); }
+
+    public function listarTodos(): array {
+        $sel = ['id',$this->colNombre];
+        foreach([
+            $this->colEmail,$this->colTelefono,$this->colDireccion,$this->colEstado,
+            $this->colDui,$this->colCodigoAcceso,$this->colFechaNac,$this->colGenero,$this->colHistorial
+        ] as $c) if($this->c($c)) $sel[]=$c;
+        $sql="SELECT ".implode(',',$sel)." FROM {$this->tabla} ORDER BY {$this->colNombre}";
+        return $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function crear(array $d): int {
+        $codigo = $this->c($this->colCodigoAcceso)?$this->generarCodigoUnico():null;
+        $cols=[]; $place=[]; $p=[];
+        $add = function(string $key, ?string $col) use (&$cols,&$place,&$p,$d){
+            if(!$col || !array_key_exists($key,$d)) return;
+            $cols[]=$col;
+            if($d[$key]===''){ $place[]='NULL'; return; }
+            $ph=':i_'.$key;
+            $place[]=$ph;
+            $p[$ph]=$d[$key];
+        };
+        $add('nombre',$this->colNombre);
+        $add('email',$this->colEmail);
+        $add('telefono',$this->colTelefono);
+        $add('direccion',$this->colDireccion);
+        $add('dui',$this->colDui);
+        if($codigo && $this->c($this->colCodigoAcceso)){ $cols[]=$this->colCodigoAcceso; $place[]=':i_code'; $p[':i_code']=$codigo; }
+        $add('fecha_nacimiento',$this->colFechaNac);
+        $add('genero',$this->colGenero);
+        $add('historial_clinico',$this->colHistorial);
+        if($this->c($this->colEstado)){ $cols[]=$this->colEstado; $place[]="'activo'"; }
+        $sql="INSERT INTO {$this->tabla} (".implode(',',$cols).") VALUES (".implode(',',$place).")";
+        $st=$this->db->prepare($sql);
+        if(!$st->execute($p)){ $e=$st->errorInfo(); throw new Exception('Insert paciente: '.$e[2]); }
         return (int)$this->db->lastInsertId();
     }
 
-    /* ========= Lectura ========= */
-
-    public function listarTodos(): array {
-        $sql = "SELECT p.*, u.nombre, u.email, u.estado
-                FROM pacientes p
-                JOIN usuarios u ON u.id = p.id_usuario
-                ORDER BY u.nombre";
-        return $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    public function listarActivos(): array {
-        $sql = "SELECT p.*, u.nombre, u.email
-                FROM pacientes p
-                JOIN usuarios u ON u.id = p.id_usuario
-                WHERE p.estado='activo' AND u.estado='activo'
-                ORDER BY u.nombre";
-        return $this->db->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    public function get(int $id): ?array {
-        $st = $this->db->prepare(
-            "SELECT p.*, u.nombre, u.email, u.estado AS estado_usuario
-             FROM pacientes p
-             JOIN usuarios u ON u.id = p.id_usuario
-             WHERE p.id = :id LIMIT 1"
-        );
-        $st->execute([':id'=>$id]);
-        $r = $st->fetch(PDO::FETCH_ASSOC);
-        return $r ?: null;
-    }
-
-    public function obtenerPorUsuario(int $idUsuario): ?array {
-        $st = $this->db->prepare("SELECT * FROM pacientes WHERE id_usuario=:u LIMIT 1");
-        $st->execute([':u'=>$idUsuario]);
-        $r = $st->fetch(PDO::FETCH_ASSOC);
-        return $r ?: null;
-    }
-
-    public function getByDui(string $dui): ?array {
-        $st = $this->db->prepare("SELECT * FROM pacientes WHERE dui=:d AND estado='activo' LIMIT 1");
-        $st->execute([':d'=>$dui]);
-        $r = $st->fetch(PDO::FETCH_ASSOC);
-        return $r ?: null;
-    }
-
-    public function getByCodigo(string $codigo): ?array {
-        $st = $this->db->prepare("SELECT * FROM pacientes WHERE codigo_acceso=:c AND estado='activo' LIMIT 1");
-        $st->execute([':c'=>$codigo]);
-        $r = $st->fetch(PDO::FETCH_ASSOC);
-        return $r ?: null;
-    }
-
-    /* ========= Actualización ========= */
-
-    public function actualizar(int $id, array $data): bool {
-        $st = $this->db->prepare(
-            "UPDATE pacientes
-             SET telefono = :tel,
-                 direccion = :dir
-             WHERE id = :id"
-        );
-        return $st->execute([
-            ':tel'=>$data['telefono'] ?? '',
-            ':dir'=>$data['direccion'] ?? '',
-            ':id'=>$id
-        ]);
-    }
-
-    // Campo genérico validado (usado por solicitudes)
-    public function actualizarCampo(int $idPaciente, string $campo, string $valor): bool {
-        $permitidos = ['telefono','direccion','historial_clinico','genero','dui'];
-        if(!in_array($campo,$permitidos,true)) {
-            throw new Exception('Campo no permitido');
+    public function actualizar(int $id, array $d): bool {
+        $sets=[]; $p=[':id'=>$id];
+        $upd=function(string $key, ?string $col) use (&$sets,&$p,$d){
+            if(!$col || !array_key_exists($key,$d)) return;
+            if($d[$key]===''){ $sets[]="$col=NULL"; return; }
+            $ph=':u_'.$key;
+            $sets[]="$col=$ph";
+            $p[$ph]=$d[$key];
+        };
+        foreach(['nombre','email','telefono','direccion','dui','fecha_nacimiento','genero','historial_clinico'] as $k){
+            $colVar = match($k){
+                'nombre'=>$this->colNombre,'email'=>$this->colEmail,'telefono'=>$this->colTelefono,
+                'direccion'=>$this->colDireccion,'dui'=>$this->colDui,'fecha_nacimiento'=>$this->colFechaNac,
+                'genero'=>$this->colGenero,'historial_clinico'=>$this->colHistorial
+            };
+            $upd($k,$colVar);
         }
-        $sql = "UPDATE pacientes SET $campo = :v WHERE id = :id";
-        $st = $this->db->prepare($sql);
-        return $st->execute([':v'=>$valor, ':id'=>$idPaciente]);
+        if(!$sets) return false;
+        $sql="UPDATE {$this->tabla} SET ".implode(',',$sets)." WHERE id=:id";
+        $st=$this->db->prepare($sql);
+        return $st->execute($p);
     }
 
-    // Alias anterior
-    public function updateCampoPermitido(int $id, string $campo, string $valor): bool {
-        try {
-            return $this->actualizarCampo($id,$campo,$valor);
-        } catch(Exception $e){
-            return false;
-        }
+    public function cambiarEstado(int $id,string $estado): bool {
+        if(!$this->c($this->colEstado)) return false;
+        if(!in_array($estado,['activo','inactivo'],true)) return false;
+        $st=$this->db->prepare("UPDATE {$this->tabla} SET {$this->colEstado}=:e WHERE id=:id");
+        return $st->execute([':e'=>$estado,':id'=>$id]);
     }
 
-    public function regenerarCodigo(int $id): ?string {
-        // Solo si existe columna codigo_acceso
-        try {
-            $nuevo = strtoupper(bin2hex(random_bytes(8)));
-            $st = $this->db->prepare("UPDATE pacientes SET codigo_acceso=:c WHERE id=:id");
-            $st->execute([':c'=>$nuevo, ':id'=>$id]);
-            return $nuevo;
-        } catch(Throwable $e){
-            return null;
-        }
+    public function regenerarCodigoAcceso(int $id): ?string {
+        if(!$this->c($this->colCodigoAcceso)) return null;
+        $codigo=$this->generarCodigoUnico();
+        $st=$this->db->prepare("UPDATE {$this->tabla} SET {$this->colCodigoAcceso}=:c WHERE id=:id");
+        if($st->execute([':c'=>$codigo,':id'=>$id])) return $codigo;
+        return null;
     }
 
-    /* ========= Eliminación ========= */
-
-    public function eliminar(int $id): bool {
-        // Eliminación física; si prefieres lógica cambia a estado='inactivo'
-        $st = $this->db->prepare("DELETE FROM pacientes WHERE id=:id");
-        return $st->execute([':id'=>$id]);
+    private function generarCodigoUnico(): string {
+        do {
+            $c=strtoupper(bin2hex(random_bytes(4)));
+            $st=$this->db->prepare("SELECT id FROM {$this->tabla} WHERE {$this->colCodigoAcceso}=? LIMIT 1");
+            $st->execute([$c]);
+        } while($st->fetch());
+        return $c;
     }
 }

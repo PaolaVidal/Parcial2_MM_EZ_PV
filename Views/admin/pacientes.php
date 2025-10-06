@@ -1,57 +1,97 @@
-<?php
 <?php /* layout por index */ ?>
 <h1 class="h5 mb-3">Pacientes</h1>
 
-<form class="row g-2 mb-3" method="post" action="<?= url('admin','pacientes') ?>">
+<form class="row g-2 mb-4" method="post" action="<?= url('admin','pacientes') ?>">
   <input type="hidden" name="accion" value="crear">
   <div class="col-md-2"><input name="nombre" class="form-control form-control-sm" placeholder="Nombre" required></div>
-  <div class="col-md-2"><input name="email" type="email" class="form-control form-control-sm" placeholder="Email" required></div>
-  <div class="col-md-2"><input name="password" type="text" class="form-control form-control-sm" placeholder="Password" required></div>
-  <div class="col-md-2"><input name="telefono" class="form-control form-control-sm" placeholder="Teléfono"></div>
+  <div class="col-md-2"><input name="email" type="email" class="form-control form-control-sm" placeholder="Email"></div>
+  <div class="col-md-2"><input name="telefono" maxlength="9" class="form-control form-control-sm" placeholder="Teléfono (####-####)" pattern="^[0-9]{4}-[0-9]{4}$" oninput="maskTel(this)"></div>
+  <div class="col-md-2"><input name="dui" maxlength="8" class="form-control form-control-sm" placeholder="DUI (######-#)" pattern="^[0-9]{6}-[0-9]{1}$" oninput="maskDui(this)"></div>
+  <div class="col-md-2"><input id="fecha_nacimiento" name="fecha_nacimiento" type="date" class="form-control form-control-sm"></div>
+  <div class="col-md-2">
+    <select name="genero" class="form-select form-select-sm">
+      <option value="">Género</option>
+      <option value="masculino">Masculino</option>
+      <option value="femenino">Femenino</option>
+      <option value="otro">Otro</option>
+    </select>
+  </div>
   <div class="col-md-3"><input name="direccion" class="form-control form-control-sm" placeholder="Dirección"></div>
-  <div class="col-md-1"><button class="btn btn-sm btn-primary w-100">Crear</button></div>
+  <div class="col-md-5"><textarea name="historial_clinico" rows="2" class="form-control form-control-sm" placeholder="Historial clínico"></textarea></div>
+  <div class="col-md-2 d-grid"><button class="btn btn-sm btn-primary">Crear</button></div>
 </form>
 
 <table class="table table-sm align-middle">
   <thead class="table-light">
-    <tr><th>ID</th><th>Nombre / Email</th><th>Teléfono</th><th>Dirección</th><th>Estado</th><th>Nueva Password</th><th></th></tr>
+    <tr>
+      <th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>DUI</th><th>Nacimiento</th>
+      <th>Género</th><th>Código</th><th>Estado</th><th>Dirección</th><th style="min-width:180px">Historial</th><th>Acciones</th>
+    </tr>
   </thead>
   <tbody>
-  <?php foreach($pacientes as $p): ?>
+  <?php foreach($pacientes as $p):
+    $nuevoEstado = ($p['estado']??'activo')==='activo'?'inactivo':'activo';
+    $labelEstado = ($p['estado']??'activo')==='activo'?'Desactivar':'Activar';
+    $clsEstado   = ($p['estado']??'activo')==='activo'?'btn-outline-warning':'btn-outline-secondary';
+  ?>
     <tr>
       <form method="post" action="<?= url('admin','pacientes') ?>">
-        <input type="hidden" name="accion" value="editar">
         <input type="hidden" name="id" value="<?= $p['id'] ?>">
-        <input type="hidden" name="id_usuario" value="<?= $p['id_usuario'] ?>">
         <td><?= $p['id'] ?></td>
-        <td style="min-width:220px">
-          <input name="nombre" value="<?= htmlspecialchars($p['nombre']??'') ?>" class="form-control form-control-sm mb-1">
-          <input name="email" value="<?= htmlspecialchars($p['email']??'') ?>" class="form-control form-control-sm">
-        </td>
-        <td><input name="telefono" value="<?= htmlspecialchars($p['telefono']??'') ?>" class="form-control form-control-sm"></td>
-        <td><input name="direccion" value="<?= htmlspecialchars($p['direccion']??'') ?>" class="form-control form-control-sm"></td>
+        <td><input name="nombre" value="<?= htmlspecialchars($p['nombre']??'') ?>" class="form-control form-control-sm" required></td>
+        <td><input name="email" value="<?= htmlspecialchars($p['email']??'') ?>" type="email" class="form-control form-control-sm"></td>
+        <td><input name="telefono" value="<?= htmlspecialchars($p['telefono']??'') ?>" maxlength="9" class="form-control form-control-sm" style="width:110px" pattern="^[0-9]{4}-[0-9]{4}$" oninput="maskTel(this)"></td>
+        <td><input name="dui" value="<?= htmlspecialchars($p['dui']??'') ?>" maxlength="8" class="form-control form-control-sm" style="width:110px" pattern="^[0-9]{6}-[0-9]{1}$" oninput="maskDui(this)"></td>
+        <td><input name="fecha_nacimiento" type="date" value="<?= htmlspecialchars($p['fecha_nacimiento']??'') ?>" class="form-control form-control-sm" style="width:135px"></td>
         <td>
-          <form method="post" action="<?= url('admin','pacientes') ?>" class="d-inline">
-            <input type="hidden" name="accion" value="estado">
-            <input type="hidden" name="id_usuario" value="<?= $p['id_usuario'] ?>">
-            <input type="hidden" name="estado" value="<?= ($p['estado']??'activo')==='activo'?'inactivo':'activo' ?>">
-            <button class="btn btn-sm <?= ($p['estado']??'')==='activo'?'btn-outline-warning':'btn-outline-secondary' ?>">
-              <?= ($p['estado']??'')==='activo'?'Desactivar':'Activar' ?>
-            </button>
-          </form>
+          <select name="genero" class="form-select form-select-sm">
+            <option value=""></option>
+            <?php foreach(['masculino','femenino','otro'] as $g): ?>
+              <option value="<?= $g ?>" <?= ($p['genero']??'')===$g?'selected':'' ?>><?= ucfirst($g) ?></option>
+            <?php endforeach; ?>
+          </select>
         </td>
-        <td><input name="new_password" type="text" placeholder="Nuevo pass" class="form-control form-control-sm"></td>
         <td class="text-nowrap">
-          <button class="btn btn-sm btn-outline-success mb-1">Guardar</button>
-          <form method="post" action="<?= url('admin','pacientes') ?>" class="d-inline" onsubmit="return confirm('Eliminar?')">
-            <input type="hidden" name="accion" value="eliminar">
-            <input type="hidden" name="id" value="<?= $p['id'] ?>">
-            <button class="btn btn-sm btn-outline-danger">X</button>
-          </form>
+          <button name="accion" value="regen_code" class="btn btn-sm btn-outline-secondary" title="Regenerar">↻</button>
+          <span class="badge text-bg-light"><?= htmlspecialchars($p['codigo_acceso']??'') ?></span>
         </td>
+        <td>
+          <button name="accion" value="estado" class="btn btn-sm <?= $clsEstado ?>" onclick="this.form.estado.value='<?= $nuevoEstado ?>';">
+            <?= $labelEstado ?>
+          </button>
+          <input type="hidden" name="estado" value="<?= $nuevoEstado ?>">
+        </td>
+        <td><input name="direccion" value="<?= htmlspecialchars($p['direccion']??'') ?>" class="form-control form-control-sm" style="width:140px"></td>
+        <td><textarea name="historial_clinico" rows="2" class="form-control form-control-sm"><?= htmlspecialchars($p['historial_clinico']??'') ?></textarea></td>
+        <td><button name="accion" value="editar" class="btn btn-sm btn-outline-success">Guardar</button></td>
       </form>
     </tr>
   <?php endforeach; ?>
   </tbody>
 </table>
-<?php if(empty($pacientes)): ?><div class="alert alert-info">Sin pacientes.</div><?php endif; ?>
+
+<?php if(empty($pacientes)): ?>
+  <div class="alert alert-info">Sin pacientes.</div>
+<?php endif; ?>
+
+<script>
+(function(){
+  const d = document.getElementById('fecha_nacimiento');
+  if(d){
+    const hoy = new Date();
+    const y = hoy.getFullYear();
+    d.max = hoy.toISOString().slice(0,10);
+    d.min = '1900-01-01';
+  }
+})();
+function maskTel(el){
+  let v = el.value.replace(/\D/g,'').slice(0,8);
+  if(v.length > 4) v = v.slice(0,4)+'-'+v.slice(4);
+  el.value = v;
+}
+function maskDui(el){
+  let v = el.value.replace(/\D/g,'').slice(0,7);
+  if(v.length > 6) v = v.slice(0,6)+'-'+v.slice(6);
+  el.value = v;
+}
+</script>

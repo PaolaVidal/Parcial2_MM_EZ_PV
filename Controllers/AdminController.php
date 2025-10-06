@@ -112,48 +112,42 @@ class AdminController {
     public function pacientes(): void {
         $this->requireAdmin();
         $pacModel = new Paciente();
-        $usrModel = new Usuario();
-
         if($_SERVER['REQUEST_METHOD']==='POST'){
             $accion = $_POST['accion'] ?? '';
-            try {
-                if($accion==='crear'){
-                    $idU = $usrModel->crear([
-                        'nombre'=>trim($_POST['nombre']),
-                        'email'=>trim($_POST['email']),
-                        'password'=>$_POST['password'],
-                        'rol'=>'paciente'
-                    ]);
-                    $pacModel->crear($idU,[
-                        'telefono'=>trim($_POST['telefono'] ?? ''),
-                        'direccion'=>trim($_POST['direccion'] ?? '')
-                    ]);
-                } elseif($accion==='editar'){
-                    $idPac = (int)$_POST['id'];
-                    $idU   = (int)$_POST['id_usuario'];
-                    $usrModel->actualizar($idU,[
-                        'nombre'=>trim($_POST['nombre']),
-                        'email'=>trim($_POST['email'])
-                    ]);
-                    $newPass = trim($_POST['new_password'] ?? '');
-                    if($newPass!==''){
-                        $usrModel->actualizarPassword($idU,$newPass);
-                    }
-                    $pacModel->actualizar($idPac,[
-                        'telefono'=>trim($_POST['telefono'] ?? ''),
-                        'direccion'=>trim($_POST['direccion'] ?? '')
-                    ]);
-                } elseif($accion==='estado'){
-                    $usrModel->cambiarEstado((int)$_POST['id_usuario'], $_POST['estado']);
-                } elseif($accion==='eliminar'){
-                    $pacModel->eliminar((int)$_POST['id']);
-                }
-            } catch(Exception $e){}
+            // Normaliza teléfono y DUI
+            $tel = isset($_POST['telefono']) ? preg_replace('/\D/','', $_POST['telefono']) : '';
+            if(strlen($tel)===8) $tel = substr($tel,0,4).'-'.substr($tel,4);
+            $dui = isset($_POST['dui']) ? preg_replace('/\D/','', $_POST['dui']) : '';
+            if(strlen($dui)===7) $dui = substr($dui,0,6).'-'.substr($dui,6);
+            $fecha = $_POST['fecha_nacimiento'] ?? '';
+            if($fecha){
+                $hoy = date('Y-m-d');
+                if($fecha > $hoy) $fecha = $hoy;
+                if($fecha < '1900-01-01') $fecha = '1900-01-01';
+            }
+            $dataBase = [
+                'nombre'=>trim($_POST['nombre'] ?? ''),
+                'email'=>trim($_POST['email'] ?? ''),
+                'telefono'=>$tel,
+                'direccion'=>trim($_POST['direccion'] ?? ''),
+                'dui'=>$dui,
+                'fecha_nacimiento'=>$fecha,
+                'genero'=>$_POST['genero'] ?? '',
+                'historial_clinico'=>trim($_POST['historial_clinico'] ?? '')
+            ];
+            if($accion==='crear'){
+                $pacModel->crear($dataBase);
+            } elseif($accion==='editar'){
+                $pacModel->actualizar((int)$_POST['id'],$dataBase);
+            } elseif($accion==='estado'){
+                $pacModel->cambiarEstado((int)$_POST['id'], $_POST['estado']);
+            } elseif($accion==='regen_code'){
+                $pacModel->regenerarCodigoAcceso((int)$_POST['id']);
+            }
             header('Location: '.url('admin','pacientes')); exit;
         }
-
         $lista = $pacModel->listarTodos();
-        $this->render('pacientes',[ 'pacientes'=>$lista ]);
+        $this->render('pacientes',['pacientes'=>$lista]);
     }
 
     /* ================== Citas =================== */
