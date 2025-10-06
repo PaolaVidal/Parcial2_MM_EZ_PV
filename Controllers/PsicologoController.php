@@ -9,7 +9,7 @@ class PsicologoController {
 
     private function requirePsicologo(): void {
         if(!isset($_SESSION['usuario']) || $_SESSION['usuario']['rol'] !== 'psicologo'){
-            header('Location: index.php?controller=Auth&action=login');
+            header('Location: index.php?url=auth/login');
             exit;
         }
     }
@@ -66,66 +66,80 @@ class PsicologoController {
 
     public function crear(): void {
         $this->requirePsicologo();
-        if($_SERVER['REQUEST_METHOD'] !== 'POST'){ header('Location: index.php?controller=Psicologo&action=citas'); return; }
+    if($_SERVER['REQUEST_METHOD'] !== 'POST'){ header('Location: index.php?url=psicologo/citas'); return; }
         $idPsico = (int)$_SESSION['usuario']['id'];
         $idPaciente = (int)($_POST['id_paciente'] ?? 0);
         $fecha = trim($_POST['fecha_hora'] ?? '');
         $motivo = trim($_POST['motivo_consulta'] ?? '');
         if(strlen($motivo) > 255) $motivo = substr($motivo,0,255);
-        if(!$idPaciente || !$fecha){ header('Location: index.php?controller=Psicologo&action=citas&err=datos'); return; }
+    if(!$idPaciente || !$fecha){ header('Location: index.php?url=psicologo/citas&err=datos'); return; }
         // Validar formato fecha: Y-m-d H:i:s o Y-m-d H:i
         $fh = DateTime::createFromFormat('Y-m-d H:i:s',$fecha) ?: DateTime::createFromFormat('Y-m-d H:i',$fecha);
-        if(!$fh){ header('Location: index.php?controller=Psicologo&action=citas&err=formato'); return; }
+    if(!$fh){ header('Location: index.php?url=psicologo/citas&err=formato'); return; }
         // Normalizar a segundos :00
         $fh->setTime((int)$fh->format('H'), (int)$fh->format('i'), 0);
         // Validar minutos 00 o 30
         $min = (int)$fh->format('i');
-        if($min !== 0 && $min !== 30){ header('Location: index.php?controller=Psicologo&action=citas&err=minutos'); return; }
+    if($min !== 0 && $min !== 30){ header('Location: index.php?url=psicologo/citas&err=minutos'); return; }
         // No permitir pasado
         $now = new DateTime();
-        if($fh <= $now){ header('Location: index.php?controller=Psicologo&action=citas&err=pasado'); return; }
+    if($fh <= $now){ header('Location: index.php?url=psicologo/citas&err=pasado'); return; }
         // Validar contra horarios configurados en Horario_Psicologo
         require_once __DIR__ . '/../models/HorarioPsicologo.php';
         $diaSemanaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
         $diaBD = $diaSemanaMap[$fh->format('D')] ?? 'lunes';
-    $dbChk2 = (new Cita())->pdo();
-        $stH = $dbChk2->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana=?");
-        $stH->execute([$idPsico,$diaBD]);
+        // Variantes sin acento para compatibilidad con datos existentes (miercoles/sabado)
+        $variants = [$diaBD];
+        if($diaBD === 'miércoles') $variants[] = 'miercoles';
+        if($diaBD === 'sábado') $variants[] = 'sabado';
+        $placeholders = implode(',', array_fill(0,count($variants),'?'));
+        $dbChk2 = (new Cita())->pdo();
+        $sqlHor = "SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana IN ($placeholders)";
+        $stH = $dbChk2->prepare($sqlHor);
+        $params = array_merge([$idPsico], $variants);
+        $stH->execute($params);
         $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
         $enRango = false;
         foreach($bloques as $b){
             if($fh->format('H:i:s') >= $b['hora_inicio'] && $fh->format('H:i:s') < $b['hora_fin']){ $enRango = true; break; }
         }
-        if(!$enRango){ header('Location: index.php?controller=Psicologo&action=citas&err=fuera_horario'); return; }
+        if(!$enRango){ header('Location: index.php?url=psicologo/citas&err=fuera_horario'); return; }
         $fecha = $fh->format('Y-m-d H:i:s');
         // Evitar choque con una existente misma fecha_hora para ese psicólogo
-    $dbChk = (new Cita())->pdo();
+        $dbChk = (new Cita())->pdo();
         $stChk = $dbChk->prepare('SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND fecha_hora=? AND estado=\'activo\'' );
         $stChk->execute([$idPsico,$fecha]);
-    if((int)$stChk->fetchColumn() > 0){ header('Location: index.php?controller=Psicologo&action=citas&err=ocupado'); return; }
+        if((int)$stChk->fetchColumn() > 0){ header('Location: index.php?url=psicologo/citas&err=ocupado'); return; }
         // Verificar paciente existe
         $pacM = new Paciente();
         $pac = $pacM->getById($idPaciente);
-        if(!$pac){ header('Location: index.php?controller=Psicologo&action=citas&err=paciente'); return; }
+    if(!$pac){ header('Location: index.php?url=psicologo/citas&err=paciente'); return; }
         try {
             $citaM = new Cita();
-            // Primero crear sin QR (es id basado)
+            // Placeholder único para no violar UNIQUE(qr_code) (evitamos '')
+            $placeholder = 'PEND_' . bin2hex(random_bytes(6));
             $id = $citaM->crear([
                 'id_paciente'=>$idPaciente,
                 'id_psicologo'=>$idPsico,
                 'fecha_hora'=>$fecha,
                 'motivo_consulta'=>$motivo,
-                'qr_code'=>''
+                'qr_code'=>$placeholder
             ]);
-            // Generar QR usando solo el id
-            try { QRHelper::generarQR('CITA:'.$id,'cita','cita_id_'.$id.'.png'); } catch(Throwable $e){}
-            // Actualizar campo qr_code con el propio id para búsquedas simples
+            // Generar QR usando el id y guardar la RUTA final (qrcodes/cita_id_ID.png)
+            $final = null;
+            try {
+                $final = QRHelper::generarQR('CITA:'.$id,'cita','cita_id_'.$id.'.png');
+            } catch(Throwable $e){ /* si falla dejamos placeholder */ }
             $pdo = (new Cita())->pdo();
-            $pdo->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$id,$id]);
-            header('Location: index.php?controller=Psicologo&action=citas&ok=1');
+            // Si QR ok guardamos ruta, si no al menos guardamos el id para mantener único
+            $valorQR = $final ?: (string)$id;
+            $pdo->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$valorQR,$id]);
+            header('Location: index.php?url=psicologo/citas&ok=1');
             return;
         } catch(Throwable $e){
-            header('Location: index.php?controller=Psicologo&action=citas&err=ex');
+            // Guardar mensaje detallado temporal (no en producción)
+            $_SESSION['crear_cita_error'] = $e->getMessage();
+            header('Location: index.php?url=psicologo/citas&err=ex');
             return;
         }
     }
@@ -221,13 +235,13 @@ class PsicologoController {
     public function pagar(): void {
         $this->requirePsicologo();
         $idCita = (int)($_POST['id_cita'] ?? 0);
-        if(!$idCita){ header('Location: index.php?controller=Psicologo&action=citas&err=cita'); return; }
+    if(!$idCita){ header('Location: index.php?url=psicologo/citas&err=cita'); return; }
         $citaM = new Cita();
         $cita = $citaM->obtener($idCita);
-        if(!$cita){ header('Location: index.php?controller=Psicologo&action=citas&err=nf'); return; }
+    if(!$cita){ header('Location: index.php?url=psicologo/citas&err=nf'); return; }
         $idPsico = (int)$_SESSION['usuario']['id'];
-        if((int)$cita['id_psicologo'] !== $idPsico){ header('Location: index.php?controller=Psicologo&action=citas&err=own'); return; }
-        if($cita['estado_cita'] !== 'realizada'){ header('Location: index.php?controller=Psicologo&action=citas&err=estado'); return; }
+    if((int)$cita['id_psicologo'] !== $idPsico){ header('Location: index.php?url=psicologo/citas&err=own'); return; }
+    if($cita['estado_cita'] !== 'realizada'){ header('Location: index.php?url=psicologo/citas&err=estado'); return; }
         $pagoM = new Pago();
         $idPago = $pagoM->registrarPagoCita($idCita, 50.0);
         // Ticket (simple)
@@ -246,6 +260,6 @@ class PsicologoController {
                 'qr_code'=>$qrRuta
             ]);
         }
-        header('Location: index.php?controller=Psicologo&action=citas&ok=pagado');
+        header('Location: index.php?url=psicologo/citas&ok=pagado');
     }
 }

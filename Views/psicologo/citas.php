@@ -14,7 +14,7 @@
   ];
   $msg = $map[$_GET['err']] ?? $_GET['err'];
 ?>
-  <div class="alert alert-danger">Error: <?= htmlspecialchars($msg) ?></div>
+  <div class="alert alert-danger">Error: <?= htmlspecialchars($msg) ?><?php if($_GET['err']==='ex' && !empty($_SESSION['crear_cita_error'])){ echo '<br><small class="text-muted">Detalle: '.htmlspecialchars($_SESSION['crear_cita_error']).'</small>'; unset($_SESSION['crear_cita_error']); } ?></div>
 <?php endif; ?>
 <div class="card mb-4">
   <div class="card-header">Crear nueva cita</div>
