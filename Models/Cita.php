@@ -48,4 +48,30 @@ class Cita extends BaseModel {
         $st = $this->db->prepare("UPDATE Cita SET estado_cita='realizada' WHERE id=?");
         return $st->execute([$id]);
     }
+
+    public function cancelar(int $id, string $motivo=''): bool {
+        $st = $this->db->prepare("UPDATE Cita SET estado_cita='cancelada', motivo_consulta=CONCAT(motivo_consulta, '\n[CANCELADA] ', ?) WHERE id=?");
+        return $st->execute([$motivo,$id]);
+    }
+
+    public function reprogramar(int $id, string $nuevaFecha): bool {
+        $st = $this->db->prepare("UPDATE Cita SET fecha_hora=?, estado_cita='pendiente' WHERE id=? AND estado_cita<>'realizada'");
+        return $st->execute([$nuevaFecha,$id]);
+    }
+
+    public function reasignarPsicologo(int $id, int $nuevoPsico): bool {
+        $st = $this->db->prepare("UPDATE Cita SET id_psicologo=? WHERE id=?");
+        return $st->execute([$nuevoPsico,$id]);
+    }
+
+    public function estadisticasEstado(): array {
+        $sql = "SELECT estado_cita estado, COUNT(*) total FROM Cita GROUP BY estado_cita";
+        return $this->db->query($sql)->fetchAll();
+    }
+
+    public function citasPorRango(string $inicio, string $fin): array {
+        $st = $this->db->prepare("SELECT * FROM Cita WHERE fecha_hora BETWEEN ? AND ? ORDER BY fecha_hora");
+        $st->execute([$inicio,$fin]);
+        return $st->fetchAll();
+    }
 }

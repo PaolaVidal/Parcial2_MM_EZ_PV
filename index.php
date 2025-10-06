@@ -12,6 +12,21 @@ $host     = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/') . '/';
 define('RUTA', $scheme . '://' . $host . $basePath);
 
+// Helper URL unificado
+if(!function_exists('url')){
+    function url(string $ctrl,string $accion='index', array $params=[]): string {
+        $path = strtolower($ctrl);
+        if($accion !== 'index') $path .= '/'. $accion;
+        $q = '';
+        if($params){
+            $pairs=[];
+            foreach($params as $k=>$v){ $pairs[] = urlencode($k).'='.urlencode($v); }
+            $q='?'.implode('&',$pairs);
+        }
+        return RUTA . $path . $q;
+    }
+}
+
 if (!session_id()) session_start();
 if (!ob_get_level()) ob_start();
 
@@ -82,6 +97,13 @@ if (isset($_GET['url'])) {
         }
     }
 }
+
+// ---- Bridge para estilo antiguo ?c=Admin&a=citas ----
+if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
+    $c = strtolower($_GET['c'] ?? 'public');
+    $a = $_GET['a'] ?? 'index';
+    $_GET['url'] = $c . '/' . $a;
+}
 ?>
 <!doctype html>
 <html lang="es">
@@ -122,10 +144,10 @@ if (isset($_GET['url'])) {
         <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>pago"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
         <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>ticket"><i class="fas fa-ticket me-1"></i> Tickets</a></li>
     <?php elseif ($rol === 'admin'): ?>
-        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>cita"><i class="fas fa-calendar-check me-1"></i> Todas las Citas</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>pago"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>ticket"><i class="fas fa-ticket me-1"></i> Tickets</a></li>
-        <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>admin/solicitudes"><i class="fas fa-edit me-1"></i> Solicitudes</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','citas') ?>"><i class="fas fa-calendar-check me-1"></i> Todas las Citas</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','pagos') ?>"><i class="fas fa-dollar-sign me-1"></i> Pagos</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','dashboard') ?>"><i class="fas fa-chart-line me-1"></i> Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="<?= url('admin','solicitudes') ?>"><i class="fas fa-edit me-1"></i> Solicitudes</a></li>
     <?php endif; ?>
     <li class="nav-item">
         <span class="nav-link">Hola, <?= htmlspecialchars($_SESSION['usuario']['nombre'] ?? '') ?> (<?= htmlspecialchars($rol) ?>)</span>
@@ -159,11 +181,7 @@ if (isset($_GET['url'])) {
         if ($clase) {
             $ctrl = new $clase();
             if (method_exists($ctrl, $accion)) {
-                if (isset($datos[2])) {
-                    $ctrl->{$accion}($datos[2]);
-                } else {
-                    $ctrl->{$accion}();
-                }
+                (isset($datos[2])) ? $ctrl->{$accion}($datos[2]) : $ctrl->{$accion}();
             } else {
                 http_response_code(404);
                 echo '<div class="alert alert-danger">Acción no encontrada</div>';
@@ -205,9 +223,3 @@ function requiereRol(array $roles): void {
         exit;
     }
 }
-
-// filepath: c:\xampp\htdocs\CICLO8_Desarrollo_Web_Multiplataforma\Parcial2_MM_EZ_PV\index.php
-// ...existing router resolve...
-$ctrl = $_GET['c'] ?? 'public';
-$accion = $_GET['a'] ?? 'portal';
-// si controlador = public usar PublicController

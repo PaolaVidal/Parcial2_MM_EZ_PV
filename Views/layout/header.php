@@ -20,6 +20,19 @@
           <li class="nav-item"><a class="nav-link" href="<?= url('Cita','index') ?>">Citas</a></li>
           <li class="nav-item"><a class="nav-link" href="<?= url('Pago','index') ?>">Pagos</a></li>
           <li class="nav-item"><a class="nav-link" href="<?= url('Ticket','verPago',['id'=>1]) ?>" title="Ejemplo de Ticket">Tickets</a></li>
+          <?php if($_SESSION['usuario']['rol']==='admin'): ?>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Admin</a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="<?= url('Admin','dashboard') ?>">Dashboard</a></li>
+                <li><a class="dropdown-item" href="<?= url('Admin','usuarios') ?>">Usuarios</a></li>
+                <li><a class="dropdown-item" href="<?= url('Admin','psicologos') ?>">Psicólogos</a></li>
+                <li><a class="dropdown-item" href="<?= url('Admin','citas') ?>">Citas</a></li>
+                <li><a class="dropdown-item" href="<?= url('Admin','pagos') ?>">Pagos</a></li>
+                <li><a class="dropdown-item" href="<?= url('Solicitud','index') ?>">Solicitudes</a></li>
+              </ul>
+            </li>
+          <?php endif; ?>
           <!-- Si quieres condicionar por rol:
           <?php /* if($_SESSION['usuario']['rol']==='admin'){ echo '<li class=\'nav-item\'><a class=\'nav-link\' href=?controller=Admin&action=dashboard>Admin</a></li>'; } */ ?>
           -->

@@ -17,7 +17,7 @@
       <td style="max-width:200px"><?= nl2br(htmlspecialchars($s['valor_nuevo'])) ?></td>
       <td><?= $s['fecha'] ?></td>
       <td>
-        <form method="post" action="<?= RUTA ?>admin/solicitudProcesar/<?= $s['id'] ?>" class="d-flex gap-1 flex-wrap">
+  <form method="post" action="<?= url('Solicitud','procesar',['id'=>$s['id']]) ?>" class="d-flex gap-1 flex-wrap">
           <input type="hidden" name="id_paciente" value="<?= $s['id_paciente'] ?>">
           <input type="hidden" name="campo_original" value="<?= htmlspecialchars($s['campo']) ?>">
           <input type="hidden" name="valor_nuevo" value="<?= htmlspecialchars($s['valor_nuevo']) ?>">
