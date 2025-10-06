@@ -182,16 +182,21 @@ class PsicologoController {
     $stH->execute([$idPsico,$diaBD]);
     $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
     if(!$bloques){ echo json_encode(['fecha'=>$fecha,'interval'=>$interval,'slots'=>[],'dia'=>$diaBD]); return; }
-    $stC = $pdo->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
-    $stC->execute([$idPsico,$fecha]);
-    $ocupadas = array_map(fn($r)=>substr($r['fecha_hora'],11,5), $stC->fetchAll(PDO::FETCH_ASSOC));
+        $stC = $pdo->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
+        $stC->execute([$idPsico,$fecha]);
+        $ocupadasReg = $stC->fetchAll(PDO::FETCH_ASSOC);
+        $ocupadas = [];
+        foreach($ocupadasReg as $r){
+            $hm = substr($r['fecha_hora'],11,5);
+            $ocupadas[$hm]=true; // marca exacto
+        }
         $slots=[]; $now = new DateTime(); $isToday = $fecha === $now->format('Y-m-d');
         foreach($bloques as $b){
             $ini = new DateTime($fecha.' '.$b['hora_inicio']);
             $fin = new DateTime($fecha.' '.$b['hora_fin']);
             while($ini < $fin){
                 $h = $ini->format('H:i');
-                if($ini < $fin && !in_array($h,$ocupadas,true) && (!$isToday || $ini > $now)){
+                if($ini < $fin && !$this->slotOcupado($h,$interval,$ocupadas) && (!$isToday || $ini > $now)){
                     $slots[] = $h;
                 }
                 $ini->modify('+'.$interval.' minutes');
@@ -199,6 +204,18 @@ class PsicologoController {
         }
         sort($slots);
         echo json_encode(['fecha'=>$fecha,'interval'=>$interval,'slots'=>$slots,'dia'=>$diaBD]);
+    }
+
+    private function slotOcupado(string $h, int $interval, array $ocupadas): bool {
+        if(isset($ocupadas[$h])) return true; // misma hora exacta ya ocupada
+        if($interval===60){
+            // si hay intervalo de 60, considerar que cita ocupada a mitad o inicio bloquea toda la hora
+            // Revisar también h+30
+            [$H,$M] = explode(':',$h);
+            $h30 = sprintf('%02d:%02d',(int)$H, (int)$M+30>=60?( (int)$H+1)%24 : (int)$M+30);
+            if(isset($ocupadas[$h30])) return true;
+        }
+        return false;
     }
 
     public function pagar(): void {

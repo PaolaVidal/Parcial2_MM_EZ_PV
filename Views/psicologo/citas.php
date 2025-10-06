@@ -78,15 +78,22 @@
     <button class="btn btn-outline-secondary btn-sm" onclick="limpiarFiltros()">Limpiar</button>
   </div>
 </div>
+<?php // Mapa id -> nombre para mostrar nombres en la tabla
+  $mapPac = [];
+  foreach($pacientes as $p){
+    $mapPac[$p['id']] = $p['nombre'] ?? $p['Nombre'] ?? ('Paciente #'.$p['id']);
+  }
+?>
 <table class="table table-sm table-striped" id="tablaCitas">
   <thead><tr><th>ID</th><th>Paciente</th><th>Fecha/Hora</th><th>Estado</th><th>QR</th><th>Pago</th><th>Acciones</th></tr></thead>
   <tbody>
     <?php $pagoModel = new Pago(); $todas = array_merge($data['pendientes'],$data['realizadas']); ?>
     <?php foreach($todas as $c): ?>
       <?php $p = $pagoModel->obtenerPorCita((int)$c['id']); ?>
-      <tr data-estado="<?= htmlspecialchars($c['estado_cita']) ?>" data-fecha="<?= substr($c['fecha_hora'],0,10) ?>" data-paciente="<?= htmlspecialchars($c['id_paciente']) ?>">
+      <?php $nombrePac = $mapPac[$c['id_paciente']] ?? ('Paciente #'.$c['id_paciente']); ?>
+      <tr data-estado="<?= htmlspecialchars($c['estado_cita']) ?>" data-fecha="<?= substr($c['fecha_hora'],0,10) ?>" data-paciente="<?= htmlspecialchars(strtolower($nombrePac)) ?>">
         <td><?= (int)$c['id'] ?></td>
-        <td><?= htmlspecialchars($c['id_paciente']) ?></td>
+        <td><?= htmlspecialchars($nombrePac) ?></td>
         <td><?= htmlspecialchars($c['fecha_hora']) ?></td>
         <td><span class="badge bg-<?= $c['estado_cita']==='pendiente'?'warning text-dark':'info' ?>"><?= htmlspecialchars($c['estado_cita']) ?></span></td>
         <td class="text-center">
