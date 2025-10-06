@@ -33,6 +33,10 @@
                 <li><a class="dropdown-item" href="<?= url('admin','solicitudes') ?>">Solicitudes</a></li>
               </ul>
             </li>
+          <?php elseif($_SESSION['usuario']['rol']==='psicologo'): ?>
+            <li class="nav-item"><a class="nav-link" href="<?= url('Psicologo','dashboard') ?>">Dashboard</a></li>
+            <li class="nav-item"><a class="nav-link" href="<?= url('Psicologo','citas') ?>">Mis Citas</a></li>
+            <li class="nav-item"><a class="nav-link" href="<?= url('Psicologo','scan') ?>">Escanear</a></li>
           <?php endif; ?>
           <!-- Si quieres condicionar por rol:
           <?php /* if($_SESSION['usuario']['rol']==='admin'){ echo '<li class=\'nav-item\'><a class=\'nav-link\' href=?controller=Admin&action=dashboard>Admin</a></li>'; } */ ?>

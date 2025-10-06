@@ -4,6 +4,7 @@ require_once __DIR__ . '/../models/Paciente.php';
 require_once __DIR__ . '/../models/Psicologo.php';
 require_once __DIR__ . '/../models/Cita.php';
 require_once __DIR__ . '/../models/Pago.php';
+require_once __DIR__ . '/../models/HorarioPsicologo.php';
 
 class AdminController {
     private string $viewsPath;
@@ -215,6 +216,35 @@ class AdminController {
         $ingresosMes = $pagoModel->ingresosPorMes((int)date('Y'));
         $ingPorPsico = $pagoModel->ingresosPorPsicologo();
         $this->render('pagos',[ 'pendientes'=>$pendientes,'ingresosMes'=>$ingresosMes,'ingPorPsico'=>$ingPorPsico ]);
+    }
+
+    /* ================== Horarios Psicólogos =================== */
+    public function horarios(): void {
+        $this->requireAdmin();
+        $psM = new Psicologo();
+        $hM  = new HorarioPsicologo();
+        $msg=''; $err='';
+        if($_SERVER['REQUEST_METHOD']==='POST'){
+            $accion = $_POST['accion'] ?? '';
+            try {
+                if($accion==='crear'){
+                    $idPs = (int)($_POST['id_psicologo']??0);
+                    $dia  = $_POST['dia_semana'] ?? '';
+                    $ini  = $_POST['hora_inicio'] ?? '';
+                    $fin  = $_POST['hora_fin'] ?? '';
+                    $hM->crear($idPs,$dia,$ini,$fin);
+                    $msg='Horario agregado';
+                } elseif($accion==='eliminar'){
+                    $idH = (int)($_POST['id_horario']??0);
+                    if($idH){ $hM->eliminar($idH); $msg='Horario eliminado'; }
+                }
+            } catch(Throwable $e){ $err=$e->getMessage(); }
+            header('Location: '.url('admin','horarios').($err?'&err='.urlencode($err):'&ok=1')); exit;
+        }
+        $psicologos = $psM->listarTodos();
+        $idSel = (int)($_GET['ps'] ?? 0);
+        $horarios = $idSel ? $hM->listarPorPsicologo($idSel) : [];
+        $this->render('horarios',[ 'psicologos'=>$psicologos,'horarios'=>$horarios,'idSel'=>$idSel ]);
     }
 
     /* =============== Solicitudes de Cambio =============== */

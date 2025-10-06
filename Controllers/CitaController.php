@@ -33,6 +33,25 @@ class CitaController {
         }
     }
 
+    // Punto de entrada genérico desde el menú "Citas"
+    public function index(): void {
+        if(!isset($_SESSION['usuario'])){
+            header('Location: index.php?controller=Auth&action=login');
+            return;
+        }
+        $rol = $_SESSION['usuario']['rol'] ?? '';
+        if($rol==='paciente'){
+            header('Location: index.php?controller=Cita&action=mis');
+        } elseif($rol==='psicologo') {
+            header('Location: index.php?controller=Psicologo&action=citas');
+        } elseif($rol==='admin') {
+            // Admin puede reutilizar la pantalla del psicólogo o una admin específica más adelante
+            header('Location: index.php?controller=Psicologo&action=citas');
+        } else {
+            echo '<div class="alert alert-warning">Rol sin vista de citas asignada.</div>';
+        }
+    }
+
     // Paciente: listado + crear en misma vista
     public function mis(): void {
         $this->requireRoles(['paciente']);
@@ -107,13 +126,9 @@ class CitaController {
     // Psicólogo: citas pendientes
     public function pendientes(): void {
         $this->requireRoles(['psicologo']);
-        $psicologo = (new Psicologo())->obtenerPorUsuario((int)$_SESSION['usuario']['id']);
-        if(!$psicologo){
-            echo '<div class="alert alert-danger">Psicólogo no encontrado.</div>';
-            return;
-        }
-        $citas = (new Cita())->listarPsicologoPendientes((int)$psicologo['id']);
-        $this->render('psicologo/citas_pendientes', ['citas'=>$citas]);
+        // Redirigimos a la nueva pantalla unificada de citas del psicólogo
+        header('Location: index.php?controller=Psicologo&action=citas');
+        exit;
     }
 
     // Redirige (form ya está en mis)

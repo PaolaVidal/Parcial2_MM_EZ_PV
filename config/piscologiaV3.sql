@@ -31,7 +31,20 @@ CREATE TABLE Psicologo (
 );
 
 -- ============================
--- 3. PACIENTES (actualizado)
+-- 3. HORARIOS DE PSICÓLOGOS
+-- ============================
+CREATE TABLE Horario_Psicologo (
+    id_horario_psicologo INT AUTO_INCREMENT PRIMARY KEY,
+    id_psicologo INT NOT NULL,
+    dia_semana ENUM('lunes','martes','miércoles','jueves','viernes','sábado','domingo') NOT NULL,
+    hora_inicio TIME NOT NULL,
+    hora_fin TIME NOT NULL,
+    CONSTRAINT fk_horario_psicologo FOREIGN KEY (id_psicologo)
+        REFERENCES Psicologo(id) ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- ============================
+-- 4. PACIENTES (actualizado)
 -- ============================
 CREATE TABLE Paciente (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -48,7 +61,7 @@ CREATE TABLE Paciente (
 );
 
 -- ============================
--- 4. CITAS (con QR)
+-- 5. CITAS (con QR)
 -- ============================
 CREATE TABLE Cita (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -66,7 +79,7 @@ CREATE TABLE Cita (
 );
 
 -- ============================
--- 5. PAGOS (simulados)
+-- 6. PAGOS (simulados)
 -- ============================
 CREATE TABLE Pago (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -81,7 +94,7 @@ CREATE TABLE Pago (
 );
 
 -- ============================
--- 6. TICKETS DE PAGO (con QR)
+-- 7. TICKETS DE PAGO (con QR)
 -- ============================
 CREATE TABLE Ticket_Pago (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -96,7 +109,7 @@ CREATE TABLE Ticket_Pago (
 );
 
 -- ============================
--- 7. EVALUACIONES
+-- 8. EVALUACIONES
 -- ============================
 CREATE TABLE Evaluacion (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -109,7 +122,7 @@ CREATE TABLE Evaluacion (
 );
 
 -- ============================
--- 8. SOLICITUD DE CAMBIO
+-- 9. SOLICITUD DE CAMBIO
 -- ============================
 CREATE TABLE SolicitudCambio (
     id INT AUTO_INCREMENT PRIMARY KEY,

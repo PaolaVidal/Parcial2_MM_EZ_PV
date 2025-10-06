@@ -89,4 +89,18 @@ class Pago extends BaseModel {
                 GROUP BY c.id_psicologo";
         return $this->db->query($sql)->fetchAll();
     }
+
+    /** Crea pago (si no existe) y lo marca como pagado inmediatamente */
+    public function registrarPagoCita(int $idCita, float $montoBase=50.0): int {
+        $pago = $this->obtenerPorCita($idCita);
+        if(!$pago){
+            $id = $this->crearParaCita($idCita,$montoBase);
+            $this->marcarPagado($id);
+            return $id;
+        }
+        if($pago['estado_pago']!=='pagado'){
+            $this->marcarPagado((int)$pago['id']);
+        }
+        return (int)$pago['id'];
+    }
 }

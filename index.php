@@ -75,6 +75,8 @@ if (isset($_GET['url'])) {
     $accionEarly = $parts[1] ?? 'index';
 
     $rawEndpoints = [
+        // Endpoints que deben devolver JSON o respuesta sin envolver en layout
+        'psicologo' => ['slots','scanProcesar'],
         // ejemplo: 'estadisticas' => ['exportar_pdf','exportar_excel']
     ];
 
@@ -139,7 +141,9 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
                     <?php if (isset($_SESSION['usuario'])):
     $rol = $_SESSION['usuario']['rol'] ?? '';
     if ($rol === 'psicologo'): ?>
-        <li class="nav-item"><a class="nav-link" href="<?= url('cita','pendientes') ?>"><i class="fas fa-list me-1"></i>Citas Pendientes</a></li>
+    <li class="nav-item"><a class="nav-link" href="<?= url('psicologo','dashboard') ?>"><i class="fas fa-chart-pie me-1"></i>Dashboard</a></li>
+    <li class="nav-item"><a class="nav-link" href="<?= url('psicologo','citas') ?>"><i class="fas fa-list me-1"></i>Mis Citas</a></li>
+    <li class="nav-item"><a class="nav-link" href="<?= url('psicologo','scan') ?>"><i class="fas fa-qrcode me-1"></i>Escanear</a></li>
         <li class="nav-item"><a class="nav-link" href="<?= url('pago') ?>"><i class="fas fa-dollar-sign me-1"></i>Pagos</a></li>
         <li class="nav-item"><a class="nav-link" href="<?= url('ticket') ?>"><i class="fas fa-ticket me-1"></i>Tickets</a></li>
     <?php elseif ($rol === 'admin'): ?>
@@ -149,6 +153,7 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
         <li class="nav-item"><a class="nav-link" href="<?= url('admin','citas') ?>">Citas</a></li>
         <li class="nav-item"><a class="nav-link" href="<?= url('admin','pagos') ?>">Pagos</a></li>
         <li class="nav-item"><a class="nav-link" href="<?= url('admin','solicitudes') ?>">Solicitudes</a></li>
+    <li class="nav-item"><a class="nav-link" href="<?= url('admin','horarios') ?>">Horarios</a></li>
     <?php endif; ?>
     <li class="nav-item">
         <span class="nav-link">Hola, <?= htmlspecialchars($_SESSION['usuario']['nombre'] ?? '') ?> (<?= htmlspecialchars($rol) ?>)</span>
