@@ -74,4 +74,46 @@ class Cita extends BaseModel {
         $st->execute([$inicio,$fin]);
         return $st->fetchAll();
     }
+
+    /**
+     * Retorna próximos slots libres (horarios) para un psicólogo a partir de hoy.
+     * Ajusta $horasBase según tu lógica real.
+     */
+    public function proximosSlots(int $idPsicologo, int $limite = 5): array {
+        $horasBase = ['08:00','09:00','10:00','11:00','14:00','15:00','16:00'];
+        $slots = [];
+        $fecha = new DateTime(); // hoy
+        while(count($slots) < $limite && $fecha->diff(new DateTime('+15 days'))->days >= 0){
+            $f = $fecha->format('Y-m-d');
+            $st = $this->db->prepare("SELECT TIME(fecha) h FROM Cita WHERE id_psicologo=? AND DATE(fecha)=?");
+            $st->execute([$idPsicologo,$f]);
+            $ocupadas = array_column($st->fetchAll(PDO::FETCH_ASSOC),'h');
+            foreach($horasBase as $h){
+                if(!in_array($h,$ocupadas,true)){
+                    $slots[] = $f.' '.$h;
+                    if(count($slots) >= $limite) break 2;
+                }
+            }
+            $fecha->modify('+1 day');
+        }
+        return $slots;
+    }
+
+    public function cuposDia(int $idPsicologo, string $fecha): int {
+        $horasBase = 7; // coincide con horasBase count
+        $st = $this->db->prepare("SELECT COUNT(*) c FROM Cita WHERE id_psicologo=? AND DATE(fecha)=?");
+        $st->execute([$idPsicologo,$fecha]);
+        $usadas = (int)$st->fetchColumn();
+        return max(0, $horasBase - $usadas);
+    }
+
+    public function cuposSemana(int $idPsicologo, string $desde): int {
+        $ini = new DateTime($desde);
+        $fin = clone $ini; $fin->modify('+6 day');
+        $horasBase = 7 * 7; // 7 horas * 7 días
+        $st = $this->db->prepare("SELECT COUNT(*) c FROM Cita WHERE id_psicologo=? AND DATE(fecha) BETWEEN ? AND ?");
+        $st->execute([$idPsicologo,$ini->format('Y-m-d'),$fin->format('Y-m-d')]);
+        $usadas = (int)$st->fetchColumn();
+        return max(0, $horasBase - $usadas);
+    }
 }

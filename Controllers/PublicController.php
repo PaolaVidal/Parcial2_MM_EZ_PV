@@ -36,50 +36,42 @@ class PublicController {
     }
 
     // Paso 1: ingresar DUI
-    public function buscarDui(): void {
+    public function buscar_dui(): void {
+        $pac = new Paciente();
         $msg = '';
-        $dui = trim($_POST['dui'] ?? '');
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            if ($dui === '') {
-                $msg = 'Ingresa DUI.';
+        $dui = $_POST['dui'] ?? '';
+        if($_SERVER['REQUEST_METHOD']==='POST'){
+            $row = $pac->getByDui($dui);
+            if($row){
+                $_SESSION['tmp_dui'] = $row['dui'];
+                header('Location: '.RUTA.'public/buscarDuiCodigo');
+                exit;
             } else {
-                $pac = (new Paciente())->getByDui($dui);
-                if ($pac) {
-                    header('Location: ' . RUTA . 'public/acceso?dui=' . urlencode($dui));
-                    exit;
-                } else {
-                    $msg = 'No encontrado.';
-                }
+                $msg = 'DUI no encontrado';
             }
         }
-        $this->render('buscar_dui', ['msg'=>$msg,'dui'=>$dui]);
+        $this->render('public/buscar_dui', compact('msg','dui'));
     }
 
-    // Paso 2: validar código de acceso
-    public function acceso(): void {
-        $dui = trim($_GET['dui'] ?? '');
+    public function buscarDuiCodigo(): void {
+        if(empty($_SESSION['tmp_dui'])){ header('Location: '.RUTA.'public/buscar_dui'); exit; }
+        $pac = new Paciente();
         $msg = '';
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $dui    = trim($_POST['dui'] ?? '');
-            $codigo = trim($_POST['codigo'] ?? '');
-            if ($dui === '' || $codigo === '') {
-                $msg = 'Campos requeridos.';
+        if($_SERVER['REQUEST_METHOD']==='POST'){
+            $dui = $_SESSION['tmp_dui'];
+            $codigo = $_POST['codigo'] ?? '';
+            $row = $pac->getByDuiCodigo($dui,$codigo);
+            if($row){
+                unset($_SESSION['tmp_dui']);
+                $_SESSION['paciente_id'] = $row['id'];
+                header('Location: '.RUTA.'public/panel');
+                exit;
             } else {
-                $pac = (new Paciente())->getByDui($dui);
-                if ($pac && hash_equals($pac['codigo_acceso'], $codigo)) {
-                    $_SESSION['portal_paciente'] = [
-                        'id_paciente' => $pac['id'],
-                        'dui'         => $pac['dui'],
-                        'codigo'      => $pac['codigo_acceso']
-                    ];
-                    header('Location: ' . RUTA . 'public/panel');
-                    exit;
-                } else {
-                    $msg = 'Código inválido.';
-                }
+                $msg = 'Código inválido';
             }
         }
-        $this->render('acceso', ['dui'=>$dui,'msg'=>$msg]);
+        $dui = $_SESSION['tmp_dui'];
+        $this->render('public/acceso', compact('msg','dui'));
     }
 
     // Panel tras validar código

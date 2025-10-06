@@ -9,7 +9,8 @@ class Paciente extends BaseModel {
     private ?string $colEmail = 'email';
     private ?string $colTelefono = 'telefono';
     private ?string $colDireccion = 'direccion';
-    private ?string $colEstado = 'estado';
+
+    // AÑADIR SI NO EXISTEN:
     private ?string $colDui = 'dui';
     private ?string $colCodigoAcceso = 'codigo_acceso';
     private ?string $colFechaNac = 'fecha_nacimiento';
@@ -125,5 +126,36 @@ class Paciente extends BaseModel {
             $st->execute([$c]);
         } while($st->fetch());
         return $c;
+    }
+
+    public function getById(int $id): ?array {
+        $st = $this->db->prepare("SELECT * FROM {$this->tabla} WHERE id=? LIMIT 1");
+        $st->execute([$id]);
+        $r = $st->fetch(PDO::FETCH_ASSOC);
+        return $r ?: null;
+    }
+
+    public function getByDui(string $dui): ?array {
+        if(empty($this->colDui)) return null;
+        $dui = preg_replace('/[^0-9-]/','', $dui);
+        if($dui==='') return null;
+        $st = $this->db->prepare("SELECT * FROM {$this->tabla} WHERE {$this->colDui}=? LIMIT 1");
+        $st->execute([$dui]);
+        $r = $st->fetch(PDO::FETCH_ASSOC);
+        return $r ?: null;
+    }
+
+    public function getByDuiCodigo(string $dui,string $codigo): ?array {
+        if(empty($this->colDui) || empty($this->colCodigoAcceso)) return null;
+        $dui = preg_replace('/[^0-9-]/','', $dui);
+        $codigo = strtoupper(trim($codigo));
+        if($dui==='' || $codigo==='') return null;
+        $sql = "SELECT id, {$this->colDui} dui, {$this->colCodigoAcceso} codigo_acceso, {$this->colNombre} nombre
+                FROM {$this->tabla}
+                WHERE {$this->colDui}=? AND {$this->colCodigoAcceso}=? LIMIT 1";
+        $st = $this->db->prepare($sql);
+        $st->execute([$dui,$codigo]);
+        $r = $st->fetch(PDO::FETCH_ASSOC);
+        return $r ?: null;
     }
 }
