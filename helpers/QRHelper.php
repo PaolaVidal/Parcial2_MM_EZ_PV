@@ -39,8 +39,8 @@ class QRHelper {
         }
 
     $rutaFisica = $dir . $nombre;           // Ruta en disco
-    // Usar prefijo public/ para coincidir con ubicación física y facilitar acceso directo
-    $rutaPublica = 'public/qrcodes/' . $nombre;    // Ruta relativa accesible desde el navegador
+    // Ruta pública relativa (sin 'public/' para permitir servir directo si docroot apunta a /public)
+    $rutaPublica = 'qrcodes/' . $nombre;    // Ruta relativa accesible desde el navegador
 
         // Generar QR (nivel de corrección L, tamaño 4)
         QRcode::png($texto, $rutaFisica, QR_ECLEVEL_L, 4);

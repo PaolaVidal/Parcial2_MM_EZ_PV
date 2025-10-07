@@ -85,26 +85,15 @@
     <?php endif; ?>
     <div class="divider-label">AUTENTICACIÓN</div>
     <div class="qr-box">
-      <?php
-        $raw = trim($ticket['qr_code'] ?? '');
-        $raw = ltrim($raw,'/');
-        if($raw && !preg_match('#^public/#',$raw)){
-            if(str_starts_with($raw,'qrcodes/')) $raw = 'public/'.$raw; else if(!str_contains($raw,'/')) $raw = 'public/qrcodes/'.$raw;
-        }
-        if(!$raw && isset($ticket['id_pago'])){
-            $raw = 'public/qrcodes/ticket_'.(int)$ticket['id_pago'].'.png';
-        }
-        $src1 = RUTA . $raw;
-        $src2 = RUTA . preg_replace('#^public/#','',$raw); // fallback sin public/
-      ?>
-      <img id="qrTicketImg" src="<?= htmlspecialchars($src1) ?>" data-alt="<?= htmlspecialchars($src2) ?>" width="180" height="180" alt="QR Ticket">
+      <?php $proxy = RUTA.'ticket/qr/'.(int)$ticket['id']; ?>
+      <img id="qrTicketImg" src="<?= htmlspecialchars($proxy) ?>" width="180" height="180" alt="QR Ticket">
       <div class="small text-muted mt-1" style="font-size:.55rem;">DATA: PAGO:<?= htmlspecialchars($ticket['id_pago'] ?? '') ?></div>
     </div>
     <div class="ticket-footer">Este ticket es válido solo dentro de la plataforma. Conserve para su registro.</div>
   </div>
   <div class="actions no-print mt-3">
     <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-1"></i>Imprimir</button>
-  <a class="btn btn-outline-secondary" id="btnDescargarQR" href="#" ><i class="fas fa-download me-1"></i>QR</a>
+  <a class="btn btn-outline-secondary" id="btnDescargarQR" href="<?= htmlspecialchars($proxy) ?>?dl=1" ><i class="fas fa-download me-1"></i>QR</a>
     <a href="<?= url('Pago','index') ?>" class="btn btn-secondary"><i class="fas fa-arrow-left me-1"></i>Volver</a>
   </div>
 </div>
@@ -112,18 +101,11 @@
 // Intentar recargar QR sin cache si falla
 const img = document.getElementById('qrTicketImg');
 if(img){
-  const descargar = document.getElementById('btnDescargarQR');
-  function setDescHref(){ if(descargar) descargar.href = img.src; }
-  setDescHref();
   img.addEventListener('error', ()=>{
-    if(!img.dataset.altTried && img.dataset.alt){
-      img.dataset.altTried='1'; img.src = img.dataset.alt; setDescHref(); return;
-    }
     if(!img.dataset.retry){
-      img.dataset.retry='1'; const base=img.src.split('?')[0]; img.src = base+'?t='+Date.now(); setDescHref(); return;
+      img.dataset.retry='1';
+      img.src = img.src.split('?')[0]+'?t='+Date.now();
     }
-    img.replaceWith(Object.assign(document.createElement('div'),{className:'text-danger small',innerText:'No se pudo cargar el código QR.'}));
-    if(descargar) descargar.classList.add('disabled');
   });
 }
 </script>

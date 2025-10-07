@@ -84,23 +84,18 @@ class TicketController {
         $ticketM = new TicketPago();
         $ticket = $ticketM->obtener($id);
         if(!$ticket){ http_response_code(404); echo 'Ticket no encontrado'; return; }
-        $rel = $ticket['qr_code'] ?? '';
-        $rel = ltrim($rel,'/');
-        // Si ya viene con public/ lo mantenemos, de lo contrario ajustamos a public/qrcodes/
-        if(!str_starts_with($rel,'public/')){
-            // casos antiguos guardaban 'qrcodes/...'
-            if(str_starts_with($rel,'qrcodes/')){
-                $rel = 'public/'.$rel;
-            } elseif($rel && !str_contains($rel,'/')) {
-                $rel = 'public/qrcodes/'.$rel; // solo nombre
-            } else if(!$rel && isset($ticket['id_pago'])) {
-                $rel = 'public/qrcodes/ticket_'.(int)$ticket['id_pago'].'.png';
+            $rel = trim($ticket['qr_code'] ?? '');
+            $rel = ltrim($rel,'/');
+            if(!$rel && isset($ticket['id_pago'])){
+                $rel = 'qrcodes/ticket_'.(int)$ticket['id_pago'].'.png';
             }
-        }
-        $base = __DIR__ . '/../public/';
-    // $base apunta a ../public/, por lo que si $rel comienza con public/ quitamos ese prefijo para componer ruta física correcta
-    $relFs = preg_replace('#^public/#','',$rel);
-    $rutaFs = realpath($base.$relFs) ?: ($base.$relFs);
+            // Normalizar casos antiguos que guardaron con public/
+            $rel = preg_replace('#^public/#','',$rel);
+            if($rel && !str_starts_with($rel,'qrcodes/')){
+                if(!str_contains($rel,'/')) $rel = 'qrcodes/'.$rel; // solo nombre
+            }
+            $base = __DIR__ . '/../public/';
+            $rutaFs = realpath($base.$rel) ?: ($base.$rel);
         if(!is_file($rutaFs) || filesize($rutaFs)===0){
             // intentar regenerar si hay id_pago
             $idPago = (int)($ticket['id_pago'] ?? 0);
@@ -112,9 +107,8 @@ class TicketController {
                     $pdo = (new TicketPago())->db; // acceso base
                 } catch(Throwable $e){ /* ignorar */ }
                 // recomputar ruta
-                $rel = 'public/qrcodes/ticket_'.$idPago.'.png';
-                $relFs = 'qrcodes/ticket_'.$idPago.'.png';
-                $rutaFs = realpath($base.$relFs) ?: ($base.$relFs);
+                    $rel = 'qrcodes/ticket_'.$idPago.'.png';
+                    $rutaFs = realpath($base.$rel) ?: ($base.$rel);
             }
         }
         if(!is_file($rutaFs)){

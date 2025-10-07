@@ -53,7 +53,12 @@
 </div>
 
 <!-- Se eliminan tablas separadas de pendientes/realizadas: ahora sólo tabla unificada -->
-<h4>Listado de Citas</h4>
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <h4 class="mb-0">Listado de Citas</h4>
+  <div>
+    <button class="btn btn-outline-secondary btn-sm me-2" onclick="abrirScannerModal()"><i class="fas fa-qrcode me-1"></i>Escanear QR</button>
+  </div>
+</div>
 <div class="row g-3 mb-2">
   <div class="col-md-3">
     <label class="form-label mb-0">Estado</label>
@@ -255,6 +260,130 @@ function mostrarQRModal(rutaRel, contenido){
     alert('No se pudo mostrar el QR');
   }
 }
+</script>
+
+<!-- Modal Scanner QR -->
+<div class="modal fade" id="scannerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="fas fa-qrcode me-1"></i> Escanear Cita</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar" onclick="detenerScannerModal()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="border rounded position-relative" style="background:#111;min-height:320px;">
+              <div id="qrReaderModal" style="width:100%;height:100%;"></div>
+              <div id="scannerEstado" class="position-absolute top-0 start-0 small text-white px-2 py-1" style="background:rgba(0,0,0,.4);border-bottom-right-radius:6px;">Inactivo</div>
+            </div>
+            <div class="mt-2 d-flex gap-2">
+              <button id="btnScanStart" class="btn btn-sm btn-primary" onclick="iniciarScannerModal()"><i class="fas fa-play"></i></button>
+              <button id="btnScanStop" class="btn btn-sm btn-outline-secondary" onclick="detenerScannerModal()" disabled><i class="fas fa-stop"></i></button>
+              <button id="btnScanRestart" class="btn btn-sm btn-outline-secondary" onclick="reiniciarScannerModal()" disabled><i class="fas fa-sync"></i></button>
+            </div>
+            <div class="mt-3">
+              <label class="form-label small mb-1">Entrada manual</label>
+              <div class="input-group input-group-sm">
+                <input type="text" id="scanManualInput" class="form-control" placeholder="CITA:123" autocomplete="off">
+                <button class="btn btn-outline-primary" onclick="procesarTokenModal(document.getElementById('scanManualInput').value.trim(),false)"><i class="fas fa-search"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card h-100 shadow-sm">
+              <div class="card-header py-2"><strong>Resultado</strong></div>
+              <div class="card-body" id="scanResultado" style="min-height:150px;">
+                <em class="text-muted">Aún sin escaneo...</em>
+              </div>
+              <div class="card-footer py-2 d-flex justify-content-between align-items-center">
+                <button id="btnScanConfirmar" class="btn btn-success btn-sm d-none" onclick="confirmarCitaModal()"><i class="fas fa-check me-1"></i>Confirmar asistencia</button>
+                <div id="scanMensaje" class="small"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal" onclick="detenerScannerModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Scanner Modal Logic ---
+let html5QrModal = null;
+let scannerActivo = false;
+let cooldownScan = false;
+let ultimoTokenScan = '';
+let citaModal = null;
+
+function ensureHtml5Lib(cb){
+  if(window.Html5Qrcode){ cb(); return; }
+  const s = document.createElement('script');
+  s.src='https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js';
+  s.onload=cb; s.onerror=()=>mostrarScanMsg('No se pudo cargar librería QR','danger');
+  document.head.appendChild(s);
+}
+function abrirScannerModal(){
+  citaModal = null; ultimoTokenScan='';
+  document.getElementById('scanResultado').innerHTML='<em class="text-muted">Aún sin escaneo...</em>';
+  document.getElementById('btnScanConfirmar').classList.add('d-none');
+  mostrarScanMsg('',null);
+  if(window.bootstrap){ bootstrap.Modal.getOrCreateInstance(document.getElementById('scannerModal')).show(); }
+  ensureHtml5Lib(()=>{}); // precargar
+}
+function iniciarScannerModal(){
+  ensureHtml5Lib(()=>{
+    if(scannerActivo) return;
+    const div = document.getElementById('qrReaderModal');
+    div.innerHTML='';
+    html5QrModal = new Html5Qrcode('qrReaderModal');
+    Html5Qrcode.getCameras().then(cams=>{
+      if(!cams.length){ mostrarScanMsg('No hay cámaras','warning'); return; }
+      html5QrModal.start(cams[0].id,{fps:10,qrbox:{width:230,height:230}},onScanModal,()=>{})
+        .then(()=>{ scannerActivo=true; actualizarEstadoScanner('Activo'); toggleScannerBtns(); })
+        .catch(e=>mostrarScanMsg('No inicia cámara: '+e,'danger'));
+    }).catch(()=>mostrarScanMsg('Error cámaras','danger'));
+  });
+}
+function detenerScannerModal(){ if(!scannerActivo||!html5QrModal) return; html5QrModal.stop().then(()=>{scannerActivo=false; actualizarEstadoScanner('Inactivo'); toggleScannerBtns();}).catch(()=>{}); }
+function reiniciarScannerModal(){ detenerScannerModal(); setTimeout(iniciarScannerModal,300); }
+function onScanModal(decoded){ procesarTokenModal(decoded.trim(), true); }
+function procesarTokenModal(token, desdeCam){
+  if(!token) return; if(!token.startsWith('CITA:')){ mostrarScanMsg('Formato inválido','danger'); return; }
+  if(desdeCam){ if(token===ultimoTokenScan) return; ultimoTokenScan=token; if(cooldownScan) return; cooldownScan=true; setTimeout(()=>cooldownScan=false,1200); }
+  fetch(BASE+'index.php?url=psicologo/scanConsultar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'token='+encodeURIComponent(token)})
+    .then(r=>r.json()).then(j=>{
+      if(!j.ok){ mostrarScanMsg(j.msg||'Error','danger'); citaModal=null; renderResultadoScan(null); return; }
+      citaModal = j.cita; renderResultadoScan(j.cita);
+      if(j.cita.estado_cita==='pendiente') document.getElementById('btnScanConfirmar').classList.remove('d-none'); else mostrarScanMsg('Ya '+j.cita.estado_cita,'info');
+      detenerScannerModal();
+    }).catch(()=>mostrarScanMsg('Fallo red','danger'));
+}
+function renderResultadoScan(c){
+  const d=document.getElementById('scanResultado');
+  if(!c){ d.innerHTML='<em class="text-muted">Sin datos</em>'; return; }
+  d.innerHTML=`<div><strong>ID:</strong> ${c.id}</div>
+    <div><strong>Paciente:</strong> ${c.id_paciente}</div>
+    <div><strong>Fecha/Hora:</strong> ${c.fecha_hora}</div>
+    <div><strong>Estado:</strong> <span class="badge bg-${c.estado_cita==='pendiente'?'warning text-dark':'success'}">${c.estado_cita}</span></div>`;
+}
+function confirmarCitaModal(){
+  if(!citaModal) return mostrarScanMsg('No hay cita','warning');
+  fetch(BASE+'index.php?url=psicologo/scanConfirmar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'id='+encodeURIComponent(citaModal.id)})
+    .then(r=>r.json()).then(j=>{
+      if(!j.ok) return mostrarScanMsg(j.msg||'No se confirmó','danger');
+      mostrarScanMsg('Cita confirmada','success');
+      citaModal.estado_cita='realizada'; renderResultadoScan(citaModal); document.getElementById('btnScanConfirmar').classList.add('d-none');
+      // Opcional: refrescar la página o actualizar fila
+    }).catch(()=>mostrarScanMsg('Error confirmación','danger'));
+}
+function mostrarScanMsg(msg,tipo){ const el=document.getElementById('scanMensaje'); if(!el) return; el.textContent=msg||''; el.className='small'; if(tipo) el.classList.add('text-'+(tipo==='danger'||tipo==='warning'?tipo:'success')); }
+function actualizarEstadoScanner(t){ const e=document.getElementById('scannerEstado'); if(e) e.textContent=t; }
+function toggleScannerBtns(){ document.getElementById('btnScanStart').disabled=scannerActivo; document.getElementById('btnScanStop').disabled=!scannerActivo; document.getElementById('btnScanRestart').disabled=!scannerActivo; }
+document.getElementById('scannerModal').addEventListener('hidden.bs.modal',()=>{ detenerScannerModal(); });
 </script>
 
 <!-- Modal QR -->
