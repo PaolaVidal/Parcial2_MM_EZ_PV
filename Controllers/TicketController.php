@@ -80,6 +80,31 @@ class TicketController {
         $this->render('tickets/ver', ['ticket' => $ticket, 'pago'=>$pago]);
     }
 
+    // /ticket/consultarPago/{idPago} - Endpoint JSON para scanner
+    public function consultarPago($idPago = 0): void {
+        header('Content-Type: application/json');
+        $idPago = (int)$idPago;
+        if ($idPago <= 0) {
+            echo json_encode(['ok'=>false, 'msg'=>'ID de pago inválido']);
+            return;
+        }
+        $model = new TicketPago();
+        $ticket = $model->obtenerPorPago($idPago);
+        if (!$ticket) {
+            echo json_encode(['ok'=>false, 'msg'=>'Ticket no encontrado']);
+            return;
+        }
+        $pagoModel = new Pago();
+        $pago = $pagoModel->obtener($idPago);
+        
+        echo json_encode([
+            'ok' => true,
+            'ticket' => $ticket,
+            'pago' => $pago,
+            'msg' => 'Ticket encontrado'
+        ]);
+    }
+
     /** Endpoint proxy: /ticket/qr/{idTicket}?dl=1
      * Sirve la imagen del QR aunque la carpeta qrcodes no sea accesible directamente.
      * Si falta intenta regenerar (para tickets ligados a pago) usando patrón ticket_{id_pago}.png

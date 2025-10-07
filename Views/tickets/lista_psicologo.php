@@ -1,5 +1,10 @@
 <?php /** @var array $tickets */ ?>
-<h2 class="mb-3">Mis Tickets de Pago</h2>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">Mis Tickets de Pago</h2>
+  <button class="btn btn-outline-primary btn-sm" onclick="abrirScannerTicket()">
+    <i class="fas fa-qrcode me-1"></i> Escanear Ticket
+  </button>
+</div>
 <div class="card mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-end small">
@@ -80,7 +85,7 @@
   </div>
 <?php endif; ?>
 
-<!-- Reusar modal QR de citas si existe; si no, definimos uno específico -->
+<!-- Modal para ver QR de ticket -->
 <div class="modal fade" id="qrModalTicket" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -94,6 +99,54 @@
       </div>
       <div class="modal-footer py-2">
         <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Scanner para verificar tickets de pago -->
+<div class="modal fade" id="scannerModalTicket" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="fas fa-qrcode me-1"></i> Escanear Ticket de Pago</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar" onclick="detenerScannerTicket()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="border rounded position-relative" style="background:#111;min-height:320px;">
+              <div id="qrReaderTicket" style="width:100%;height:100%;"></div>
+              <div id="scannerEstadoTicket" class="position-absolute top-0 start-0 small text-white px-2 py-1" style="background:rgba(0,0,0,.4);border-bottom-right-radius:6px;">Inactivo</div>
+            </div>
+            <div class="mt-2 d-flex gap-2">
+              <button id="btnScanStartTicket" class="btn btn-sm btn-primary" onclick="iniciarScannerTicket()"><i class="fas fa-play me-1"></i> Iniciar</button>
+              <button id="btnScanStopTicket" class="btn btn-sm btn-outline-secondary" onclick="detenerScannerTicket()" disabled><i class="fas fa-stop"></i></button>
+              <button id="btnScanRestartTicket" class="btn btn-sm btn-outline-secondary" onclick="reiniciarScannerTicket()" disabled><i class="fas fa-sync"></i></button>
+            </div>
+            <div class="mt-3">
+              <label class="form-label small mb-1">Entrada manual</label>
+              <div class="input-group input-group-sm">
+                <input type="text" id="scanManualTicket" class="form-control" placeholder="PAGO:123" autocomplete="off">
+                <button class="btn btn-outline-primary" onclick="procesarTokenTicket(document.getElementById('scanManualTicket').value.trim(),false)"><i class="fas fa-search"></i></button>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card h-100 shadow-sm">
+              <div class="card-header py-2"><strong>Información del Ticket</strong></div>
+              <div class="card-body" id="scanResultadoTicket" style="min-height:150px;">
+                <em class="text-muted">Aún sin escaneo...</em>
+              </div>
+              <div class="card-footer py-2">
+                <div id="scanMensajeTicket" class="small"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal" onclick="detenerScannerTicket()">Cerrar</button>
       </div>
     </div>
   </div>
@@ -164,4 +217,234 @@ function filtrarTickets(){
 }
 function limpiarFiltrosTickets(){ fEstado.value=''; fDesde.value=''; fHasta.value=''; fTexto.value=''; fCita.value=''; filtrarTickets(); }
 document.addEventListener('DOMContentLoaded', filtrarTickets);
+
+// ========================
+// Scanner de Tickets QR
+// ========================
+let html5QrTicket = null;
+let scannerActivoTicket = false;
+let cooldownTicket = false;
+let ultimoTokenTicket = '';
+
+function ensureHtml5LibTicket(cb){
+  if(window.Html5Qrcode){ cb(); return; }
+  
+  const s = document.createElement('script');
+  s.src = BASE + 'public/js/html5-qrcode.min.js';
+  s.async = true;
+  
+  s.onload = function() {
+    cb();
+  };
+  
+  s.onerror = function() {
+    mostrarScanMsgTicket('❌ Error cargando librería QR local. Verifica public/js/html5-qrcode.min.js','danger');
+    console.error('Error cargando html5-qrcode.min.js desde public/js/');
+  };
+  
+  document.head.appendChild(s);
+}
+
+function abrirScannerTicket(){
+  ultimoTokenTicket='';
+  document.getElementById('scanResultadoTicket').innerHTML='<em class="text-muted">Aún sin escaneo...</em>';
+  document.getElementById('scanManualTicket').value='';
+  mostrarScanMsgTicket('','');
+  if(window.bootstrap){ 
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('scannerModalTicket')).show(); 
+  }
+  
+  // Precargar librería y mostrar estado
+  mostrarScanMsgTicket('Cargando librería...','info');
+  ensureHtml5LibTicket(()=>{
+    mostrarScanMsgTicket('✓ Listo. Presiona "Iniciar" para escanear tickets.','success');
+  });
+}
+
+function iniciarScannerTicket(){
+  ensureHtml5LibTicket(()=>{
+    if(scannerActivoTicket) return;
+    const div = document.getElementById('qrReaderTicket');
+    div.innerHTML='';
+    
+    // Limpiar instancia previa
+    if(html5QrTicket){
+      html5QrTicket.clear().catch(()=>{});
+    }
+    
+    html5QrTicket = new Html5Qrcode('qrReaderTicket');
+    mostrarScanMsgTicket('Solicitando acceso a cámara...','info');
+    
+    Html5Qrcode.getCameras().then(cams=>{
+      if(!cams.length){ 
+        mostrarScanMsgTicket('No hay cámaras disponibles','warning'); 
+        return; 
+      }
+      
+      // Preferir cámara trasera
+      let camId = cams[0].id;
+      const backCam = cams.find(c=>c.label && c.label.toLowerCase().includes('back'));
+      if(backCam) camId = backCam.id;
+      
+      html5QrTicket.start(
+        camId,
+        {fps:10, qrbox: {width:230, height:230}, aspectRatio: 1.0},
+        onScanTicket,
+        ()=>{/* ignorar errores de lectura */}
+      )
+      .then(()=>{ 
+        scannerActivoTicket=true; 
+        actualizarEstadoScannerTicket('Activo - Escaneando'); 
+        toggleScannerBtnsTicket();
+        mostrarScanMsgTicket('Scanner activo. Apunta al código QR del ticket.','success');
+      })
+      .catch(e=>{
+        const msg = e.toString();
+        if(msg.includes('Permission') || msg.includes('NotAllowed')){
+          mostrarScanMsgTicket('⚠️ Permiso denegado. Permite el acceso a la cámara.','danger');
+        } else if(msg.includes('NotFound')){
+          mostrarScanMsgTicket('⚠️ No se encontró cámara disponible.','danger');
+        } else {
+          mostrarScanMsgTicket('Error al iniciar: '+msg.substring(0,50),'danger');
+        }
+        console.error('Error al iniciar scanner ticket:', e);
+      });
+    }).catch(e=>{
+      mostrarScanMsgTicket('Error enumerando cámaras: '+e,'danger');
+      console.error('Error getCameras ticket:', e);
+    });
+  });
+}
+
+function detenerScannerTicket(){ 
+  if(!scannerActivoTicket||!html5QrTicket) return; 
+  html5QrTicket.stop()
+    .then(()=>{
+      scannerActivoTicket=false; 
+      actualizarEstadoScannerTicket('Detenido'); 
+      toggleScannerBtnsTicket();
+      mostrarScanMsgTicket('Scanner detenido','info');
+    })
+    .catch(e=>{
+      console.error('Error deteniendo ticket scanner:', e);
+      scannerActivoTicket=false;
+      toggleScannerBtnsTicket();
+    }); 
+}
+
+function reiniciarScannerTicket(){ 
+  detenerScannerTicket(); 
+  setTimeout(()=>{
+    if(html5QrTicket){
+      html5QrTicket.clear().catch(()=>{});
+    }
+    iniciarScannerTicket();
+  }, 500); 
+}
+
+function onScanTicket(decoded){ 
+  procesarTokenTicket(decoded.trim(), true); 
+}
+
+function procesarTokenTicket(token, desdeCam){
+  if(!token) return;
+  if(!token.startsWith('PAGO:')){ 
+    mostrarScanMsgTicket('Formato inválido. Use PAGO:ID','danger'); 
+    return; 
+  }
+  if(desdeCam){
+    if(token===ultimoTokenTicket) return; // evitar repetir
+    ultimoTokenTicket=token;
+    if(cooldownTicket) return;
+    cooldownTicket=true;
+    setTimeout(()=>cooldownTicket=false, 1200);
+  }
+  
+  const idPago = token.substring(5);
+  mostrarScanMsgTicket('Consultando pago #'+idPago+'...','info');
+  
+  // Consultar datos del ticket por ID de pago (endpoint JSON)
+  fetch(BASE+'index.php?url=ticket/consultarPago/'+encodeURIComponent(idPago))
+    .then(r=>r.json())
+    .then(j=>{
+      if(!j.ok){
+        mostrarScanMsgTicket(j.msg || 'Error desconocido','danger');
+        document.getElementById('scanResultadoTicket').innerHTML='<div class="alert alert-warning">'+htmlEscape(j.msg)+'</div>';
+        return;
+      }
+      
+      // Ticket encontrado - mostrar información
+      const t = j.ticket;
+      const p = j.pago;
+      const estadoBadge = (p && p.estado_pago==='pagado') ? 'success' : 'warning text-dark';
+      
+      mostrarScanMsgTicket('✓ Ticket verificado','success');
+      document.getElementById('scanResultadoTicket').innerHTML=`
+        <div class="mb-2">
+          <strong>Ticket ID:</strong> ${t.id}<br>
+          <strong>Pago ID:</strong> ${idPago}<br>
+          <strong>Monto:</strong> $${p ? Number(p.monto_total).toFixed(2) : 'N/A'}<br>
+          <strong>Estado:</strong> <span class="badge bg-${estadoBadge}">${p ? htmlEscape(p.estado_pago) : 'desconocido'}</span><br>
+          <small class="text-muted">Emisión: ${t.fecha_emision || 'N/A'}</small>
+        </div>
+        <div class="mt-3">
+          <a href="${BASE}ticket/ver/${t.id}" class="btn btn-sm btn-primary" target="_blank">
+            <i class="fas fa-eye me-1"></i> Ver Detalle
+          </a>
+          <a href="${BASE}ticket/pdf/${t.id}" class="btn btn-sm btn-danger ms-1" target="_blank">
+            <i class="fas fa-file-pdf me-1"></i> PDF
+          </a>
+        </div>
+      `;
+      
+      if(desdeCam){
+        detenerScannerTicket();
+      }
+    })
+    .catch(e=>{
+      console.error('Error consultando ticket:', e);
+      mostrarScanMsgTicket('Error de red o servidor','danger');
+      document.getElementById('scanResultadoTicket').innerHTML='<div class="alert alert-danger">Fallo de conexión</div>';
+    });
+}
+
+function mostrarScanMsgTicket(msg,tipo){ 
+  const el=document.getElementById('scanMensajeTicket'); 
+  if(!el) return; 
+  el.textContent=msg||''; 
+  el.className='small fw-semibold'; 
+  if(tipo==='danger') el.classList.add('text-danger');
+  else if(tipo==='warning') el.classList.add('text-warning');
+  else if(tipo==='success') el.classList.add('text-success');
+  else if(tipo==='info') el.classList.add('text-info');
+}
+
+function actualizarEstadoScannerTicket(t){ 
+  const e=document.getElementById('scannerEstadoTicket'); 
+  if(e) e.textContent=t; 
+}
+
+function toggleScannerBtnsTicket(){ 
+  document.getElementById('btnScanStartTicket').disabled=scannerActivoTicket; 
+  document.getElementById('btnScanStopTicket').disabled=!scannerActivoTicket; 
+  document.getElementById('btnScanRestartTicket').disabled=!scannerActivoTicket; 
+}
+
+// Limpiar al cerrar modal
+document.getElementById('scannerModalTicket').addEventListener('hidden.bs.modal',()=>{ 
+  detenerScannerTicket();
+  setTimeout(()=>{
+    if(html5QrTicket){
+      html5QrTicket.clear().catch(()=>{});
+      html5QrTicket = null;
+    }
+  }, 300);
+});
+
+// Función auxiliar para escapar HTML
+function htmlEscape(str){
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
 </script>

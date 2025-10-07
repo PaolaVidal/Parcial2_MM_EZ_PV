@@ -321,34 +321,104 @@ let citaModal = null;
 
 function ensureHtml5Lib(cb){
   if(window.Html5Qrcode){ cb(); return; }
+  
   const s = document.createElement('script');
-  s.src='https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js';
-  s.onload=cb; s.onerror=()=>mostrarScanMsg('No se pudo cargar librería QR','danger');
+  s.src = BASE + 'public/js/html5-qrcode.min.js';
+  s.async = true;
+  
+  s.onload = function() {
+    cb();
+  };
+  
+  s.onerror = function() {
+    mostrarScanMsg('❌ Error cargando librería QR local. Verifica public/js/html5-qrcode.min.js','danger');
+    console.error('Error cargando html5-qrcode.min.js desde public/js/');
+  };
+  
   document.head.appendChild(s);
 }
 function abrirScannerModal(){
   citaModal = null; ultimoTokenScan='';
   document.getElementById('scanResultado').innerHTML='<em class="text-muted">Aún sin escaneo...</em>';
   document.getElementById('btnScanConfirmar').classList.add('d-none');
-  mostrarScanMsg('',null);
+  document.getElementById('scanManualInput').value='';
+  mostrarScanMsg('','');
   if(window.bootstrap){ bootstrap.Modal.getOrCreateInstance(document.getElementById('scannerModal')).show(); }
-  ensureHtml5Lib(()=>{}); // precargar
+  
+  // Precargar librería y mostrar estado
+  mostrarScanMsg('Cargando librería...','info');
+  ensureHtml5Lib(()=>{
+    mostrarScanMsg('✓ Listo. Presiona "Iniciar" para escanear.','success');
+  });
 }
 function iniciarScannerModal(){
   ensureHtml5Lib(()=>{
     if(scannerActivo) return;
     const div = document.getElementById('qrReaderModal');
     div.innerHTML='';
+    
+    // Destruir instancia previa si existe
+    if(html5QrModal){
+      html5QrModal.clear().catch(()=>{});
+    }
+    
     html5QrModal = new Html5Qrcode('qrReaderModal');
+    mostrarScanMsg('Solicitando acceso a cámara...','info');
+    
     Html5Qrcode.getCameras().then(cams=>{
-      if(!cams.length){ mostrarScanMsg('No hay cámaras','warning'); return; }
-      html5QrModal.start(cams[0].id,{fps:10,qrbox:{width:230,height:230}},onScanModal,()=>{})
-        .then(()=>{ scannerActivo=true; actualizarEstadoScanner('Activo'); toggleScannerBtns(); })
-        .catch(e=>mostrarScanMsg('No inicia cámara: '+e,'danger'));
-    }).catch(()=>mostrarScanMsg('Error cámaras','danger'));
+      if(!cams.length){ 
+        mostrarScanMsg('No hay cámaras disponibles','warning'); 
+        return; 
+      }
+      // Preferir cámara trasera si está disponible
+      let camId = cams[0].id;
+      const backCam = cams.find(c=>c.label && c.label.toLowerCase().includes('back'));
+      if(backCam) camId = backCam.id;
+      
+      html5QrModal.start(
+        camId,
+        {fps:10, qrbox: {width:230, height:230}, aspectRatio: 1.0},
+        onScanModal,
+        ()=>{/* ignorar errores de lectura */}
+      )
+      .then(()=>{ 
+        scannerActivo=true; 
+        actualizarEstadoScanner('Activo - Escaneando'); 
+        toggleScannerBtns();
+        mostrarScanMsg('Scanner activo. Apunta al código QR.','success');
+      })
+      .catch(e=>{
+        const msg = e.toString();
+        if(msg.includes('Permission') || msg.includes('NotAllowed')){
+          mostrarScanMsg('⚠️ Permiso denegado. Permite el acceso a la cámara.','danger');
+        } else if(msg.includes('NotFound')){
+          mostrarScanMsg('⚠️ No se encontró cámara disponible.','danger');
+        } else {
+          mostrarScanMsg('Error al iniciar: '+msg.substring(0,50),'danger');
+        }
+        console.error('Error al iniciar scanner:', e);
+      });
+    }).catch(e=>{
+      mostrarScanMsg('Error enumerando cámaras: '+e,'danger');
+      console.error('Error getCameras:', e);
+    });
   });
 }
-function detenerScannerModal(){ if(!scannerActivo||!html5QrModal) return; html5QrModal.stop().then(()=>{scannerActivo=false; actualizarEstadoScanner('Inactivo'); toggleScannerBtns();}).catch(()=>{}); }
+function detenerScannerModal(){ 
+  if(!scannerActivo||!html5QrModal) return; 
+  html5QrModal.stop()
+    .then(()=>{
+      scannerActivo=false; 
+      actualizarEstadoScanner('Detenido'); 
+      toggleScannerBtns();
+      mostrarScanMsg('Scanner detenido','info');
+    })
+    .catch(e=>{
+      console.error('Error deteniendo:', e);
+      scannerActivo=false;
+      toggleScannerBtns();
+    }); 
+}
 function reiniciarScannerModal(){ detenerScannerModal(); setTimeout(iniciarScannerModal,300); }
 function onScanModal(decoded){ procesarTokenModal(decoded.trim(), true); }
 function procesarTokenModal(token, desdeCam){
@@ -380,10 +450,35 @@ function confirmarCitaModal(){
       // Opcional: refrescar la página o actualizar fila
     }).catch(()=>mostrarScanMsg('Error confirmación','danger'));
 }
-function mostrarScanMsg(msg,tipo){ const el=document.getElementById('scanMensaje'); if(!el) return; el.textContent=msg||''; el.className='small'; if(tipo) el.classList.add('text-'+(tipo==='danger'||tipo==='warning'?tipo:'success')); }
-function actualizarEstadoScanner(t){ const e=document.getElementById('scannerEstado'); if(e) e.textContent=t; }
-function toggleScannerBtns(){ document.getElementById('btnScanStart').disabled=scannerActivo; document.getElementById('btnScanStop').disabled=!scannerActivo; document.getElementById('btnScanRestart').disabled=!scannerActivo; }
-document.getElementById('scannerModal').addEventListener('hidden.bs.modal',()=>{ detenerScannerModal(); });
+function mostrarScanMsg(msg,tipo){ 
+  const el=document.getElementById('scanMensaje'); 
+  if(!el) return; 
+  el.textContent=msg||''; 
+  el.className='small fw-semibold mt-1'; 
+  if(tipo==='danger') el.classList.add('text-danger');
+  else if(tipo==='warning') el.classList.add('text-warning');
+  else if(tipo==='success') el.classList.add('text-success');
+  else if(tipo==='info') el.classList.add('text-info');
+}
+function actualizarEstadoScanner(t){ 
+  const e=document.getElementById('scannerEstado'); 
+  if(e) e.textContent=t; 
+}
+function toggleScannerBtns(){ 
+  document.getElementById('btnScanStart').disabled=scannerActivo; 
+  document.getElementById('btnScanStop').disabled=!scannerActivo; 
+  document.getElementById('btnScanRestart').disabled=!scannerActivo; 
+}
+// Limpiar al cerrar modal
+document.getElementById('scannerModal').addEventListener('hidden.bs.modal',()=>{ 
+  detenerScannerModal();
+  setTimeout(()=>{
+    if(html5QrModal){
+      html5QrModal.clear().catch(()=>{});
+      html5QrModal = null;
+    }
+  }, 300);
+});
 </script>
 
 <!-- Modal QR -->
