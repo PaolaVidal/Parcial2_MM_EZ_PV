@@ -9,17 +9,22 @@ class PDFHelper {
      * Genera un PDF a partir de contenido HTML
      * @param string $html Contenido HTML
      * @param string $filename Nombre del archivo (sin extensión)
-     * @param string $orientation Orientación: 'portrait' o 'landscape'
+     * @param bool|string $orientation Si es bool, es $download; si es string, es orientación
      * @param string $size Tamaño: 'letter', 'a4', etc.
      * @param bool $download Si true descarga, si false muestra en navegador
      */
     public static function generarPDF(
         string $html, 
         string $filename = 'documento', 
-        string $orientation = 'portrait',
+        $orientation = 'portrait',
         string $size = 'letter',
         bool $download = true
     ): void {
+        // Compatibilidad: si $orientation es bool, reordenar parámetros
+        if (is_bool($orientation)) {
+            $download = $orientation;
+            $orientation = 'portrait';
+        }
         // Registrar autoloader simple para DomPDF
         spl_autoload_register(function($class) {
             // Manejar clases del namespace Dompdf\

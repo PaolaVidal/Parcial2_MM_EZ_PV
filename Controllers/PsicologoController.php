@@ -5,6 +5,8 @@ require_once __DIR__ . '/../Models/Pago.php';
 require_once __DIR__ . '/../Models/TicketPago.php';
 require_once __DIR__ . '/../Models/Psicologo.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
+require_once __DIR__ . '/../helpers/PDFHelper.php';
+require_once __DIR__ . '/../helpers/ExcelHelper.php';
 
 class PsicologoController {
 
@@ -44,15 +46,78 @@ class PsicologoController {
 
     public function dashboard(): void {
         $this->requirePsicologo();
-    $idPsico = $this->currentPsicologoId();
+        $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         $pagoM = new Pago();
-        $slots = $citaM->proximosSlots($idPsico,5);
+        
+        // Datos básicos
         $hoy = date('Y-m-d');
         $pendHoy = $this->countEstadoDia($idPsico,'pendiente',$hoy);
         $realHoy = $this->countEstadoDia($idPsico,'realizada',$hoy);
+        $cancelHoy = $this->countEstadoDia($idPsico,'cancelada',$hoy);
         $ingresos = $this->ingresosPsicologo($idPsico);
-        $this->render('psicologo/dashboard',[ 'slots'=>$slots,'pendHoy'=>$pendHoy,'realHoy'=>$realHoy,'ingresos'=>$ingresos ]);
+        
+        // Estadísticas del mes
+        $inicioMes = date('Y-m-01');
+        $finMes = date('Y-m-t');
+        $citasMes = $this->countCitasRango($idPsico, $inicioMes, $finMes);
+        $ingresosMes = $this->ingresosPsicologoRango($idPsico, $inicioMes, $finMes);
+        
+        // Próximos slots y citas pendientes
+        $slots = $citaM->proximosSlots($idPsico,5);
+        $proximasCitas = $this->proximasCitasPendientes($idPsico, 5);
+        
+        // Estadísticas por estado (últimos 30 días)
+        $hace30 = date('Y-m-d', strtotime('-30 days'));
+        $estadisticas = $this->estadisticasUltimos30Dias($idPsico);
+        
+        // Total de pacientes únicos atendidos
+        $totalPacientes = $this->contarPacientesUnicos($idPsico);
+        
+        $this->render('psicologo/dashboard',[
+            'pendHoy' => $pendHoy,
+            'realHoy' => $realHoy,
+            'cancelHoy' => $cancelHoy,
+            'ingresos' => $ingresos,
+            'citasMes' => $citasMes,
+            'ingresosMes' => $ingresosMes,
+            'slots' => $slots,
+            'proximasCitas' => $proximasCitas,
+            'estadisticas' => $estadisticas,
+            'totalPacientes' => $totalPacientes
+        ]);
+    }
+
+    public function estadisticas(): void {
+        $this->requirePsicologo();
+        $idPsico = $this->currentPsicologoId();
+        
+        // Datos para gráficos
+        $citasPorMes = $this->citasPorMes($idPsico, 12); // Últimos 12 meses
+        $citasPorEstado = $this->citasPorEstado($idPsico);
+        $ingresosPorMes = $this->ingresosPorMes($idPsico, 12);
+        $pacientesFrecuentes = $this->pacientesMasFrecuentes($idPsico, 10);
+        $horariosPopulares = $this->horariosPopulares($idPsico);
+        $tasaCancelacion = $this->tasaCancelacion($idPsico);
+        $promedioIngresoDiario = $this->promedioIngresoDiario($idPsico);
+        
+        // Estadísticas generales
+        $totalCitas = $this->countCitasTotal($idPsico);
+        $totalPacientes = $this->contarPacientesUnicos($idPsico);
+        $ingresoTotal = $this->ingresosPsicologo($idPsico);
+        
+        $this->render('psicologo/estadisticas', [
+            'citasPorMes' => $citasPorMes,
+            'citasPorEstado' => $citasPorEstado,
+            'ingresosPorMes' => $ingresosPorMes,
+            'pacientesFrecuentes' => $pacientesFrecuentes,
+            'horariosPopulares' => $horariosPopulares,
+            'tasaCancelacion' => $tasaCancelacion,
+            'promedioIngresoDiario' => $promedioIngresoDiario,
+            'totalCitas' => $totalCitas,
+            'totalPacientes' => $totalPacientes,
+            'ingresoTotal' => $ingresoTotal
+        ]);
     }
 
     private function countEstadoDia(int $idPsico,string $estado,string $fecha): int {
@@ -336,5 +401,449 @@ class PsicologoController {
             ]);
         }
         header('Location: index.php?url=psicologo/citas&ok=pagado');
+    }
+
+    // ============================================
+    // MÉTODOS AUXILIARES PARA ESTADÍSTICAS
+    // ============================================
+
+    private function countCitasRango(int $idPsico, string $inicio, string $fin): int {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora) BETWEEN ? AND ? AND estado='activo'");
+        $st->execute([$idPsico, $inicio, $fin]);
+        return (int)$st->fetchColumn();
+    }
+
+    private function ingresosPsicologoRango(int $idPsico, string $inicio, string $fin): float {
+        $db = (new Pago())->pdo();
+        $st = $db->prepare("SELECT COALESCE(SUM(p.monto_total),0) FROM Pago p JOIN Cita c ON c.id=p.id_cita WHERE c.id_psicologo=? AND p.estado_pago='pagado' AND DATE(c.fecha_hora) BETWEEN ? AND ?");
+        $st->execute([$idPsico, $inicio, $fin]);
+        return (float)$st->fetchColumn();
+    }
+
+    private function proximasCitasPendientes(int $idPsico, int $limit): array {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("SELECT c.*, p.nombre as paciente_nombre FROM Cita c LEFT JOIN Paciente p ON p.id=c.id_paciente WHERE c.id_psicologo=? AND c.estado_cita='pendiente' AND DATE(c.fecha_hora) >= CURDATE() AND c.estado='activo' ORDER BY c.fecha_hora ASC LIMIT ?");
+        $st->bindValue(1, $idPsico, PDO::PARAM_INT);
+        $st->bindValue(2, $limit, PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function estadisticasUltimos30Dias(int $idPsico): array {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("SELECT estado_cita, COUNT(*) as total FROM Cita WHERE id_psicologo=? AND fecha_hora >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND estado='activo' GROUP BY estado_cita");
+        $st->execute([$idPsico]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function contarPacientesUnicos(int $idPsico): int {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("SELECT COUNT(DISTINCT id_paciente) FROM Cita WHERE id_psicologo=? AND estado='activo'");
+        $st->execute([$idPsico]);
+        return (int)$st->fetchColumn();
+    }
+
+    private function citasPorMes(int $idPsico, int $meses): array {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("
+            SELECT DATE_FORMAT(fecha_hora, '%Y-%m') as mes, COUNT(*) as total 
+            FROM Cita 
+            WHERE id_psicologo=? AND fecha_hora >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND estado='activo'
+            GROUP BY mes 
+            ORDER BY mes ASC
+        ");
+        $st->execute([$idPsico, $meses]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function citasPorEstado(int $idPsico): array {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("SELECT estado_cita, COUNT(*) as total FROM Cita WHERE id_psicologo=? AND estado='activo' GROUP BY estado_cita");
+        $st->execute([$idPsico]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function ingresosPorMes(int $idPsico, int $meses): array {
+        $db = (new Pago())->pdo();
+        $st = $db->prepare("
+            SELECT DATE_FORMAT(c.fecha_hora, '%Y-%m') as mes, SUM(p.monto_total) as total 
+            FROM Pago p 
+            JOIN Cita c ON c.id=p.id_cita 
+            WHERE c.id_psicologo=? AND p.estado_pago='pagado' AND c.fecha_hora >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+            GROUP BY mes 
+            ORDER BY mes ASC
+        ");
+        $st->execute([$idPsico, $meses]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function pacientesMasFrecuentes(int $idPsico, int $limit): array {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("
+            SELECT p.nombre, p.dui, COUNT(*) as total_citas 
+            FROM Cita c 
+            JOIN Paciente p ON p.id=c.id_paciente 
+            WHERE c.id_psicologo=? AND c.estado='activo'
+            GROUP BY c.id_paciente 
+            ORDER BY total_citas DESC 
+            LIMIT ?
+        ");
+        $st->bindValue(1, $idPsico, PDO::PARAM_INT);
+        $st->bindValue(2, $limit, PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function horariosPopulares(int $idPsico): array {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("
+            SELECT HOUR(fecha_hora) as hora, COUNT(*) as total 
+            FROM Cita 
+            WHERE id_psicologo=? AND estado='activo' AND estado_cita='realizada'
+            GROUP BY hora 
+            ORDER BY total DESC 
+            LIMIT 5
+        ");
+        $st->execute([$idPsico]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function tasaCancelacion(int $idPsico): float {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado='activo'");
+        $st->execute([$idPsico]);
+        $total = (int)$st->fetchColumn();
+        
+        if($total === 0) return 0.0;
+        
+        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado_cita='cancelada' AND estado='activo'");
+        $st->execute([$idPsico]);
+        $canceladas = (int)$st->fetchColumn();
+        
+        return ($canceladas / $total) * 100;
+    }
+
+    private function promedioIngresoDiario(int $idPsico): float {
+        $db = (new Pago())->pdo();
+        $st = $db->prepare("
+            SELECT DATEDIFF(MAX(c.fecha_hora), MIN(c.fecha_hora)) as dias 
+            FROM Pago p 
+            JOIN Cita c ON c.id=p.id_cita 
+            WHERE c.id_psicologo=? AND p.estado_pago='pagado'
+        ");
+        $st->execute([$idPsico]);
+        $dias = (int)$st->fetchColumn();
+        
+        if($dias === 0) $dias = 1;
+        
+        $ingresos = $this->ingresosPsicologo($idPsico);
+        return $ingresos / $dias;
+    }
+
+    private function countCitasTotal(int $idPsico): int {
+        $db = (new Cita())->pdo();
+        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado='activo'");
+        $st->execute([$idPsico]);
+        return (int)$st->fetchColumn();
+    }
+
+    public function exportarEstadisticasExcel(): void {
+        $this->requirePsicologo();
+        $idPsico = $this->currentPsicologoId();
+        
+        require_once __DIR__ . '/../helpers/ExcelHelper.php';
+        
+        // Obtener todos los datos
+        $citasPorMes = $this->citasPorMes($idPsico, 12);
+        $citasPorEstado = $this->citasPorEstado($idPsico);
+        $ingresosPorMes = $this->ingresosPorMes($idPsico, 12);
+        $pacientesFrecuentes = $this->pacientesMasFrecuentes($idPsico, 10);
+        $horariosPopulares = $this->horariosPopulares($idPsico);
+        $tasaCancelacion = $this->tasaCancelacion($idPsico);
+        $promedioIngresoDiario = $this->promedioIngresoDiario($idPsico);
+        $totalCitas = $this->countCitasTotal($idPsico);
+        $totalPacientes = $this->contarPacientesUnicos($idPsico);
+        $ingresoTotal = $this->ingresosPsicologo($idPsico);
+        
+        // Preparar las secciones del reporte
+        $sheets = [];
+        
+        // 1. Resumen General
+        $sheets['RESUMEN GENERAL'] = [
+            'headers' => ['Métrica', 'Valor'],
+            'data' => [
+                ['Total de Citas', $totalCitas],
+                ['Pacientes Únicos', $totalPacientes],
+                ['Ingresos Totales', '$' . number_format($ingresoTotal, 2)],
+                ['Promedio Ingreso Diario', '$' . number_format($promedioIngresoDiario, 2)],
+                ['Tasa de Cancelación', number_format($tasaCancelacion, 2) . '%']
+            ]
+        ];
+        
+        // 2. Citas por Mes
+        $dataCitasMes = [];
+        foreach($citasPorMes as $row) {
+            $dataCitasMes[] = [$row['mes'], $row['total']];
+        }
+        $sheets['CITAS POR MES (Últimos 12 meses)'] = [
+            'headers' => ['Mes', 'Total de Citas'],
+            'data' => $dataCitasMes
+        ];
+        
+        // 3. Citas por Estado
+        $dataCitasEstado = [];
+        foreach($citasPorEstado as $row) {
+            $dataCitasEstado[] = [ucfirst($row['estado_cita']), $row['total']];
+        }
+        $sheets['CITAS POR ESTADO'] = [
+            'headers' => ['Estado', 'Total'],
+            'data' => $dataCitasEstado
+        ];
+        
+        // 4. Ingresos por Mes
+        $dataIngresos = [];
+        foreach($ingresosPorMes as $row) {
+            $dataIngresos[] = [$row['mes'], '$' . number_format($row['total'], 2)];
+        }
+        $sheets['INGRESOS POR MES'] = [
+            'headers' => ['Mes', 'Ingresos'],
+            'data' => $dataIngresos
+        ];
+        
+        // 5. Top 10 Pacientes Frecuentes
+        $dataPacientes = [];
+        $pos = 1;
+        foreach($pacientesFrecuentes as $pac) {
+            $nombre = $pac['nombre'] ?: 'Paciente #' . $pac['id_paciente'];
+            $dataPacientes[] = [$pos++, $nombre, $pac['total_citas']];
+        }
+        $sheets['TOP 10 PACIENTES FRECUENTES'] = [
+            'headers' => ['#', 'Nombre del Paciente', 'Total de Citas'],
+            'data' => $dataPacientes
+        ];
+        
+        // 6. Horarios Más Populares
+        if (!empty($horariosPopulares)) {
+            $dataHorarios = [];
+            foreach($horariosPopulares as $h) {
+                $dataHorarios[] = [$h['hora'] . ':00', $h['total']];
+            }
+            $sheets['HORARIOS MÁS SOLICITADOS'] = [
+                'headers' => ['Hora', 'Citas Agendadas'],
+                'data' => $dataHorarios
+            ];
+        }
+        
+        // Nombre del archivo con fecha
+        $filename = 'Estadisticas_Psicologo_' . date('Y-m-d_His');
+        
+        // Exportar
+        ExcelHelper::exportarMultiplesSecciones($sheets, $filename);
+    }
+
+    public function exportarEstadisticasPDF(): void {
+        $this->requirePsicologo();
+        $idPsico = $this->currentPsicologoId();
+        
+        require_once __DIR__ . '/../helpers/PDFHelper.php';
+        
+        // Obtener todos los datos
+        $citasPorMes = $this->citasPorMes($idPsico, 12);
+        $citasPorEstado = $this->citasPorEstado($idPsico);
+        $ingresosPorMes = $this->ingresosPorMes($idPsico, 12);
+        $pacientesFrecuentes = $this->pacientesMasFrecuentes($idPsico, 10);
+        $horariosPopulares = $this->horariosPopulares($idPsico);
+        $tasaCancelacion = $this->tasaCancelacion($idPsico);
+        $promedioIngresoDiario = $this->promedioIngresoDiario($idPsico);
+        $totalCitas = $this->countCitasTotal($idPsico);
+        $totalPacientes = $this->contarPacientesUnicos($idPsico);
+        $ingresoTotal = $this->ingresosPsicologo($idPsico);
+        
+        // Obtener nombre del psicólogo
+        $psico = new Psicologo();
+        $dataPsico = $psico->obtener($idPsico);
+        $nombrePsico = $dataPsico['nombre'] ?? 'Psicólogo';
+        
+        // Generar HTML para el PDF
+        $html = '
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 11px; }
+                h1 { color: #2c3e50; text-align: center; font-size: 18px; margin-bottom: 5px; }
+                h2 { color: #34495e; font-size: 14px; margin-top: 15px; margin-bottom: 8px; border-bottom: 2px solid #3498db; padding-bottom: 3px; }
+                .fecha { text-align: center; color: #7f8c8d; font-size: 10px; margin-bottom: 15px; }
+                .resumen { background: #ecf0f1; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
+                .resumen-item { display: inline-block; width: 48%; margin-bottom: 8px; }
+                .resumen-label { font-weight: bold; color: #2c3e50; }
+                .resumen-valor { color: #2980b9; font-size: 13px; font-weight: bold; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 10px; }
+                th { background: #3498db; color: white; padding: 6px; text-align: left; font-size: 10px; }
+                td { padding: 5px; border-bottom: 1px solid #ddd; }
+                tr:nth-child(even) { background: #f8f9fa; }
+                .text-right { text-align: right; }
+                .text-center { text-align: center; }
+                .badge { padding: 3px 8px; border-radius: 3px; font-size: 9px; font-weight: bold; }
+                .badge-success { background: #27ae60; color: white; }
+                .badge-warning { background: #f39c12; color: white; }
+                .badge-danger { background: #e74c3c; color: white; }
+                .page-break { page-break-after: always; }
+            </style>
+        </head>
+        <body>
+            <h1>Reporte de Estadísticas - ' . htmlspecialchars($nombrePsico) . '</h1>
+            <div class="fecha">Generado el ' . date('d/m/Y H:i:s') . '</div>
+            
+            <div class="resumen">
+                <h2>Resumen General</h2>
+                <div class="resumen-item">
+                    <span class="resumen-label">Total de Citas:</span><br>
+                    <span class="resumen-valor">' . $totalCitas . '</span>
+                </div>
+                <div class="resumen-item">
+                    <span class="resumen-label">Pacientes Únicos:</span><br>
+                    <span class="resumen-valor">' . $totalPacientes . '</span>
+                </div>
+                <div class="resumen-item">
+                    <span class="resumen-label">Ingresos Totales:</span><br>
+                    <span class="resumen-valor">$' . number_format($ingresoTotal, 2) . '</span>
+                </div>
+                <div class="resumen-item">
+                    <span class="resumen-label">Promedio Diario:</span><br>
+                    <span class="resumen-valor">$' . number_format($promedioIngresoDiario, 2) . '</span>
+                </div>
+                <div class="resumen-item">
+                    <span class="resumen-label">Tasa de Cancelación:</span><br>
+                    <span class="resumen-valor ' . ($tasaCancelacion > 20 ? 'text-danger' : '') . '">' . number_format($tasaCancelacion, 2) . '%</span>
+                </div>
+            </div>
+            
+            <h2>Citas por Mes (Últimos 12 meses)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mes</th>
+                        <th class="text-center">Total de Citas</th>
+                    </tr>
+                </thead>
+                <tbody>';
+                
+        foreach($citasPorMes as $row) {
+            $html .= '<tr>
+                <td>' . htmlspecialchars($row['mes']) . '</td>
+                <td class="text-center">' . $row['total'] . '</td>
+            </tr>';
+        }
+        
+        $html .= '</tbody>
+            </table>
+            
+            <h2>Distribución de Citas por Estado</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Estado</th>
+                        <th class="text-center">Total</th>
+                        <th class="text-center">Porcentaje</th>
+                    </tr>
+                </thead>
+                <tbody>';
+                
+        foreach($citasPorEstado as $row) {
+            $porcentaje = $totalCitas > 0 ? ($row['total'] / $totalCitas) * 100 : 0;
+            $badgeClass = 'badge';
+            if($row['estado_cita'] === 'realizada') $badgeClass .= ' badge-success';
+            elseif($row['estado_cita'] === 'pendiente') $badgeClass .= ' badge-warning';
+            elseif($row['estado_cita'] === 'cancelada') $badgeClass .= ' badge-danger';
+            
+            $html .= '<tr>
+                <td><span class="' . $badgeClass . '">' . ucfirst($row['estado_cita']) . '</span></td>
+                <td class="text-center">' . $row['total'] . '</td>
+                <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
+            </tr>';
+        }
+        
+        $html .= '</tbody>
+            </table>
+            
+            <div class="page-break"></div>
+            
+            <h2>Ingresos por Mes</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mes</th>
+                        <th class="text-right">Ingresos</th>
+                    </tr>
+                </thead>
+                <tbody>';
+                
+        foreach($ingresosPorMes as $row) {
+            $html .= '<tr>
+                <td>' . htmlspecialchars($row['mes']) . '</td>
+                <td class="text-right">$' . number_format($row['total'], 2) . '</td>
+            </tr>';
+        }
+        
+        $html .= '</tbody>
+            </table>
+            
+            <h2>Top 10 Pacientes Más Frecuentes</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="text-center">#</th>
+                        <th>Nombre del Paciente</th>
+                        <th class="text-center">Total de Citas</th>
+                    </tr>
+                </thead>
+                <tbody>';
+                
+        $pos = 1;
+        foreach($pacientesFrecuentes as $pac) {
+            $nombre = $pac['nombre'] ?: 'Paciente #' . $pac['id_paciente'];
+            $html .= '<tr>
+                <td class="text-center">' . $pos++ . '</td>
+                <td>' . htmlspecialchars($nombre) . '</td>
+                <td class="text-center">' . $pac['total_citas'] . '</td>
+            </tr>';
+        }
+        
+        $html .= '</tbody>
+            </table>';
+            
+        if (!empty($horariosPopulares)) {
+            $html .= '
+            <h2>Horarios Más Solicitados</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hora</th>
+                        <th class="text-center">Citas Agendadas</th>
+                    </tr>
+                </thead>
+                <tbody>';
+                
+            foreach($horariosPopulares as $h) {
+                $html .= '<tr>
+                    <td>' . $h['hora'] . ':00</td>
+                    <td class="text-center">' . $h['total'] . '</td>
+                </tr>';
+            }
+            
+            $html .= '</tbody>
+            </table>';
+        }
+        
+        $html .= '
+        </body>
+        </html>';
+        
+        // Generar PDF
+        $filename = 'Estadisticas_' . date('Y-m-d_His') . '.pdf';
+        PDFHelper::generarPDF($html, $filename, true);
     }
 }
