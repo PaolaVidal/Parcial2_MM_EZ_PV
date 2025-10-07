@@ -112,26 +112,6 @@
   </div>
 </div>
 
-<!-- Modal Reprogramar -->
-<div class="modal fade" id="reprogramarModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header py-2"><h6 class="modal-title">Reprogramar Cita <span id="reprogramarId"></span></h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <form method="post" action="<?= url('admin','citas') ?>" onsubmit="return validarReprogramar()">
-          <input type="hidden" name="id" id="reprogramarInputId">
-            <input type="hidden" name="op" value="reprogramar">
-            <label class="form-label small">Nueva fecha/hora</label>
-            <input type="datetime-local" name="fecha_hora" id="reprogramarFecha" class="form-control form-control-sm" required>
-            <div class="form-text small">Minutos permitidos: 00 o 30</div>
-            <div class="text-end mt-3"><button class="btn btn-primary btn-sm">Guardar</button></div>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 const BASE='<?= RUTA ?>';
 let datosCitas = <?= json_encode($citas) ?>;
@@ -159,11 +139,10 @@ function renderTabla(){
 }
 function accionesHtml(c){
   const btnCancel = `<button class='btn btn-outline-danger btn-sm me-1' onclick='abrirCancelar(${c.id})' title='Cancelar'><i class="fas fa-ban"></i></button>`;
-  const btnReprog = `<button class='btn btn-outline-primary btn-sm me-1' onclick='abrirReprogramar(${c.id},"${c.fecha_hora}")' title='Reprogramar'><i class="fas fa-sync"></i></button>`;
   let btnReasig; if(c.estado_cita==='realizada' || c.estado_cita==='cancelada'){
     btnReasig = `<button class='btn btn-outline-secondary btn-sm' disabled title='No disponible'><i class="fas fa-exchange-alt"></i></button>`;
   } else { btnReasig = `<button class='btn btn-outline-secondary btn-sm' onclick='abrirReasignar(${c.id},${c.id_psicologo},"${c.fecha_hora}")' title='Reasignar'><i class="fas fa-exchange-alt"></i></button>`; }
-  return btnCancel+btnReprog+btnReasig;
+  return btnCancel+btnReasig;
 }
 function limpiarFiltros(){ ['fEstado','fFecha','fTexto','fPs'].forEach(id=>document.getElementById(id).value=''); refrescarCitas(); }
 function refrescarCitas(){ fetchCitas().then(renderTabla).catch(()=>alert('Error cargando citas')); }
@@ -233,8 +212,6 @@ function cargarSlotsReasignar(){
 }
 function selSlotReasignar(h){ document.getElementById('reasignarHora').value=h; [...document.querySelectorAll('#reasignarSlots button')].forEach(b=>b.classList.remove('active')); const btn=[...document.querySelectorAll('#reasignarSlots button')].find(b=>b.textContent===h); if(btn) btn.classList.add('active'); }
 function abrirCancelar(id){ document.getElementById('cancelarId').textContent='#'+id; document.getElementById('cancelarInputId').value=id; bootstrap.Modal.getOrCreateInstance(document.getElementById('cancelarModal')).show(); }
-function abrirReprogramar(id,fh){ document.getElementById('reprogramarId').textContent='#'+id; document.getElementById('reprogramarInputId').value=id; const loc=fh.replace(' ','T').substring(0,16); document.getElementById('reprogramarFecha').value=loc; bootstrap.Modal.getOrCreateInstance(document.getElementById('reprogramarModal')).show(); }
-function validarReprogramar(){ const v=document.getElementById('reprogramarFecha').value; if(!v) return false; const m=parseInt(v.split(':')[1]); if(m!==0 && m!==30){ alert('Minutos deben ser 00 o 30'); return false;} return confirm('Confirmar reprogramación?'); }
 function validarReasignar(){ const ps=document.getElementById('reasignarSelectPs').value; const fecha=document.getElementById('reasignarFecha').value; const hora=document.getElementById('reasignarHora').value; if(!ps||!fecha||!hora){ alert('Selecciona psicólogo, fecha y hora.'); return false;} document.getElementById('reasignarFechaHoraFinal').value=fecha+' '+hora+':00'; return confirm('Confirmar reasignación?'); }
 function confirmarCancelar(){ return confirm('Cancelar definitivamente?'); }
 document.addEventListener('DOMContentLoaded', renderTabla);
