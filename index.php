@@ -62,6 +62,12 @@ if (!isset($_SESSION['usuario'])) {
             $publica = true; break;
         }
     }
+    
+    // Permitir acceso a tickets si el paciente tiene sesión pública
+    if (!$publica && isset($_SESSION['paciente_id']) && str_starts_with($urlActual, 'ticket/')) {
+        $publica = true;
+    }
+    
     if (!$publica) {
         header('Location: ' . RUTA . 'auth/login');
         exit;

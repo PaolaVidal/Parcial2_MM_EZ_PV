@@ -14,8 +14,9 @@
         <form method="post">
           <div class="mb-3">
             <label class="form-label"><i class="fas fa-id-card"></i> DUI</label>
-            <input name="dui" class="form-control" placeholder="00000000-0" required 
-                   value="<?= htmlspecialchars($dui ?? '') ?>" pattern="[0-9]{8}-[0-9]">
+            <input name="dui" id="inputDui" class="form-control" placeholder="00000000-0" required 
+                   value="<?= htmlspecialchars($dui ?? '') ?>" pattern="^[0-9]{8}-[0-9]{1}$" maxlength="10"
+                   oninput="maskDuiPublic(this)">
             <small class="text-muted">Formato: 12345678-9</small>
           </div>
           
@@ -48,3 +49,27 @@
     </div>
   </div>
 </div>
+
+<script>
+function maskDuiPublic(el) {
+  let v = el.value.replace(/\D/g,'').slice(0,9);
+  if(v.length > 8) v = v.slice(0,8)+'-'+v.slice(8);
+  el.value = v;
+}
+
+// Asegurar que el formato se aplica antes de enviar
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.querySelector('form');
+  const duiInput = document.getElementById('inputDui');
+  
+  if(form && duiInput) {
+    form.addEventListener('submit', function(e) {
+      // Formatear DUI antes de enviar
+      let v = duiInput.value.replace(/\D/g,'').slice(0,9);
+      if(v.length === 9) {
+        duiInput.value = v.slice(0,8)+'-'+v.slice(8);
+      }
+    });
+  }
+});
+</script>

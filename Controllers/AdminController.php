@@ -119,8 +119,11 @@ class AdminController {
             // Normaliza teléfono y DUI
             $tel = isset($_POST['telefono']) ? preg_replace('/\D/','', $_POST['telefono']) : '';
             if(strlen($tel)===8) $tel = substr($tel,0,4).'-'.substr($tel,4);
+            
+            // DUI: formato 8-1 (########-#)
             $dui = isset($_POST['dui']) ? preg_replace('/\D/','', $_POST['dui']) : '';
-            if(strlen($dui)===7) $dui = substr($dui,0,6).'-'.substr($dui,6);
+            if(strlen($dui)===9) $dui = substr($dui,0,8).'-'.substr($dui,8);
+            
             $fecha = $_POST['fecha_nacimiento'] ?? '';
             if($fecha){
                 $hoy = date('Y-m-d');

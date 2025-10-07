@@ -6,7 +6,7 @@
   <div class="col-md-2"><input name="nombre" class="form-control form-control-sm" placeholder="Nombre" required></div>
   <div class="col-md-2"><input name="email" type="email" class="form-control form-control-sm" placeholder="Email"></div>
   <div class="col-md-2"><input name="telefono" maxlength="9" class="form-control form-control-sm" placeholder="Teléfono (####-####)" pattern="^[0-9]{4}-[0-9]{4}$" oninput="maskTel(this)"></div>
-  <div class="col-md-2"><input name="dui" maxlength="8" class="form-control form-control-sm" placeholder="DUI (######-#)" pattern="^[0-9]{6}-[0-9]{1}$" oninput="maskDui(this)"></div>
+  <div class="col-md-2"><input name="dui" maxlength="10" class="form-control form-control-sm" placeholder="DUI (########-#)" pattern="^[0-9]{8}-[0-9]{1}$" oninput="maskDui(this)"></div>
   <div class="col-md-2"><input id="fecha_nacimiento" name="fecha_nacimiento" type="date" class="form-control form-control-sm"></div>
   <div class="col-md-2">
     <select name="genero" class="form-select form-select-sm">
@@ -41,7 +41,7 @@
         <td><input name="nombre" value="<?= htmlspecialchars($p['nombre']??'') ?>" class="form-control form-control-sm" required></td>
         <td><input name="email" value="<?= htmlspecialchars($p['email']??'') ?>" type="email" class="form-control form-control-sm"></td>
         <td><input name="telefono" value="<?= htmlspecialchars($p['telefono']??'') ?>" maxlength="9" class="form-control form-control-sm" style="width:110px" pattern="^[0-9]{4}-[0-9]{4}$" oninput="maskTel(this)"></td>
-        <td><input name="dui" value="<?= htmlspecialchars($p['dui']??'') ?>" maxlength="8" class="form-control form-control-sm" style="width:110px" pattern="^[0-9]{6}-[0-9]{1}$" oninput="maskDui(this)"></td>
+        <td><input name="dui" value="<?= htmlspecialchars($p['dui']??'') ?>" maxlength="10" class="form-control form-control-sm" style="width:120px" pattern="^[0-9]{8}-[0-9]{1}$" oninput="maskDui(this)"></td>
         <td><input name="fecha_nacimiento" type="date" value="<?= htmlspecialchars($p['fecha_nacimiento']??'') ?>" class="form-control form-control-sm" style="width:135px"></td>
         <td>
           <select name="genero" class="form-select form-select-sm">
@@ -83,15 +83,50 @@
     d.max = hoy.toISOString().slice(0,10);
     d.min = '1900-01-01';
   }
+  
+  // Aplicar máscaras antes de enviar CUALQUIER formulario
+  document.querySelectorAll('form').forEach(form => {
+    form.addEventListener('submit', function(e) {
+      console.log('🔧 Pre-submit: Formateando campos...');
+      
+      // Formatear todos los DUIs antes de enviar
+      this.querySelectorAll('input[name="dui"]').forEach(input => {
+        const original = input.value;
+        if(input.value) {
+          let v = input.value.replace(/\D/g,'').slice(0,9);
+          if(v.length === 9) {
+            input.value = v.slice(0,8)+'-'+v.slice(8);
+            console.log('✅ DUI formateado:', original, '→', input.value);
+          } else {
+            console.log('⚠️ DUI no tiene 9 dígitos:', original, '('+v.length+' dígitos)');
+          }
+        }
+      });
+      
+      // Formatear todos los teléfonos antes de enviar
+      this.querySelectorAll('input[name="telefono"]').forEach(input => {
+        const original = input.value;
+        if(input.value) {
+          let v = input.value.replace(/\D/g,'').slice(0,8);
+          if(v.length === 8) {
+            input.value = v.slice(0,4)+'-'+v.slice(4);
+            console.log('✅ Tel formateado:', original, '→', input.value);
+          }
+        }
+      });
+    });
+  });
 })();
+
 function maskTel(el){
   let v = el.value.replace(/\D/g,'').slice(0,8);
   if(v.length > 4) v = v.slice(0,4)+'-'+v.slice(4);
   el.value = v;
 }
+
 function maskDui(el){
-  let v = el.value.replace(/\D/g,'').slice(0,7);
-  if(v.length > 6) v = v.slice(0,6)+'-'+v.slice(6);
+  let v = el.value.replace(/\D/g,'').slice(0,9);
+  if(v.length > 8) v = v.slice(0,8)+'-'+v.slice(8);
   el.value = v;
 }
 </script>

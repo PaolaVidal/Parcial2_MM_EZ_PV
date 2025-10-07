@@ -89,7 +89,28 @@ class PDFHelper {
         
         $dompdf = new \Dompdf\Dompdf($options);
         
-        // Cargar HTML de forma simple
+        // CRÍTICO: dompdf requiere la clase Masterminds\HTML5 que no tenemos
+        // SOLUCIÓN: Crear una clase stub vacía para evitar el error fatal
+        if (!class_exists('Masterminds\\HTML5')) {
+            // Crear namespace y clase dummy
+            eval('
+                namespace Masterminds {
+                    class HTML5 {
+                        public function __construct($options = array()) {}
+                        public function loadHTML($html) { 
+                            $dom = new \\DOMDocument();
+                            @$dom->loadHTML($html);
+                            return $dom;
+                        }
+                        public function save($dom) {
+                            return $dom->saveHTML();
+                        }
+                    }
+                }
+            ');
+        }
+        
+        // Ahora sí podemos usar loadHtml sin error
         $dompdf->loadHtml($html);
         
         // Configurar papel
