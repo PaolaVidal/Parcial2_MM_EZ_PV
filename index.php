@@ -165,11 +165,10 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
                         $seg1 = strtolower($seg[1] ?? 'index');
                     ?>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='dashboard')?'active fw-semibold':'' ?>" href="<?= url('admin','dashboard') ?>"><i class="fas fa-chart-line me-1"></i>Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='estadisticas')?'active fw-semibold':'' ?>" href="<?= url('admin','estadisticas') ?>"><i class="fas fa-chart-bar me-1"></i>Estadísticas</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='pacientes')?'active fw-semibold':'' ?>" href="<?= url('admin','pacientes') ?>"><i class="fas fa-users me-1"></i>Pacientes</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='psicologos')?'active fw-semibold':'' ?>" href="<?= url('admin','psicologos') ?>"><i class="fas fa-user-md me-1"></i>Psicólogos</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='citas')?'active fw-semibold':'' ?>" href="<?= url('admin','citas') ?>"><i class="fas fa-calendar-check me-1"></i>Citas</a></li>
-        <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='pagos')?'active fw-semibold':'' ?>" href="<?= url('admin','pagos') ?>"><i class="fas fa-money-bill-wave me-1"></i>Pagos</a></li>
-        <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='tickets')?'active fw-semibold':'' ?>" href="<?= url('admin','tickets') ?>"><i class="fas fa-ticket-alt me-1"></i>Tickets</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='solicitudes')?'active fw-semibold':'' ?>" href="<?= url('admin','solicitudes') ?>"><i class="fas fa-inbox me-1"></i>Solicitudes</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='horarios')?'active fw-semibold':'' ?>" href="<?= url('admin','horarios') ?>"><i class="fas fa-clock me-1"></i>Horarios</a></li>
     <?php endif; ?>

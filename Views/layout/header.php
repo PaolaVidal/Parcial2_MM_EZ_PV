@@ -31,7 +31,6 @@
                 <li><a class="dropdown-item" href="<?= url('admin','pacientes') ?>"><i class="fas fa-user-injured me-2"></i>Pacientes</a></li>
                 <li><a class="dropdown-item" href="<?= url('admin','psicologos') ?>"><i class="fas fa-user-md me-2"></i>Psicólogos</a></li>
                 <li><a class="dropdown-item" href="<?= url('admin','citas') ?>"><i class="fas fa-calendar me-2"></i>Citas</a></li>
-                <li><a class="dropdown-item" href="<?= url('admin','pagos') ?>"><i class="fas fa-dollar-sign me-2"></i>Pagos</a></li>
                 <li><a class="dropdown-item" href="<?= url('admin','solicitudes') ?>"><i class="fas fa-inbox me-2"></i>Solicitudes</a></li>
               </ul>
             </li>

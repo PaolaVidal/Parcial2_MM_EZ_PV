@@ -765,12 +765,25 @@ class AdminController {
             PDFHelper::generarPDF($html, 'estadisticas_' . $anio . ($mes ? '_' . $mes : ''), 'landscape', 'letter', true);
             
         } else if($formato === 'excel') {
-            // Preparar datos para Excel
-            $dataCitas = [['ID', 'Fecha', 'Paciente', 'Psicólogo', 'Especialidad', 'Estado', 'Monto']];
+            // HOJA 1: Resumen General
+            $dataResumen = [
+                ['ESTADÍSTICAS DEL SISTEMA - ' . $anio . ($mes ? '/' . $mes : ''), '', '', ''],
+                ['', '', '', ''],
+                ['Métrica', 'Valor', '', ''],
+                ['Total de Citas', count($citas), '', ''],
+                ['Citas Realizadas', count(array_filter($citas, fn($c) => $c['estado'] === 'realizada')), '', ''],
+                ['Citas Pendientes', count(array_filter($citas, fn($c) => $c['estado'] === 'pendiente')), '', ''],
+                ['Citas Canceladas', count(array_filter($citas, fn($c) => $c['estado'] === 'cancelada')), '', ''],
+                ['Ingresos Totales', '$' . number_format(array_sum(array_column($citas, 'monto')), 2), '', '']
+            ];
+            
+            // HOJA 2: Citas Detalladas
+            $dataCitas = [['ID', 'Fecha', 'Hora', 'Paciente', 'Psicólogo', 'Especialidad', 'Estado', 'Monto']];
             foreach($citas as $c) {
                 $dataCitas[] = [
                     $c['id'],
-                    date('d/m/Y H:i', strtotime($c['fecha_hora'])),
+                    date('d/m/Y', strtotime($c['fecha_hora'])),
+                    date('H:i', strtotime($c['fecha_hora'])),
                     $c['paciente'],
                     $c['psicologo'],
                     $c['especialidad'],
@@ -779,11 +792,137 @@ class AdminController {
                 ];
             }
             
+            // HOJA 3: Citas por Estado
+            $estadosCounts = [];
+            foreach($citas as $c) {
+                $est = $c['estado'];
+                if(!isset($estadosCounts[$est])) $estadosCounts[$est] = 0;
+                $estadosCounts[$est]++;
+            }
+            $dataEstados = [['Estado', 'Cantidad', 'Porcentaje']];
+            $total = count($citas);
+            foreach($estadosCounts as $est => $cnt) {
+                $dataEstados[] = [
+                    ucfirst($est),
+                    $cnt,
+                    ($total > 0 ? round(($cnt/$total)*100, 2) : 0) . '%'
+                ];
+            }
+            
+            // HOJA 4: Ingresos por Mes
+            $stIngresos = $pdo->prepare("
+                SELECT 
+                    DATE_FORMAT(c.fecha_hora, '%m-%Y') as mes,
+                    COUNT(c.id) as citas,
+                    COALESCE(SUM(p.monto_total), 0) as ingresos
+                FROM Cita c
+                LEFT JOIN Pago p ON c.id = p.id_cita AND p.estado_pago = 'pagado'
+                WHERE $whereSQL
+                GROUP BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+                ORDER BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+            ");
+            $stIngresos->execute($params);
+            $ingresosMes = $stIngresos->fetchAll(PDO::FETCH_ASSOC);
+            
+            $dataIngresos = [['Mes', 'Total Citas', 'Ingresos']];
+            foreach($ingresosMes as $im) {
+                $dataIngresos[] = [
+                    $im['mes'],
+                    $im['citas'],
+                    '$' . number_format($im['ingresos'], 2)
+                ];
+            }
+            
+            // HOJA 5: Top 10 Psicólogos
+            $stTopPs = $pdo->prepare("
+                SELECT 
+                    u.nombre,
+                    ps.especialidad,
+                    COUNT(c.id) as total_citas,
+                    COALESCE(SUM(p.monto_total), 0) as ingresos
+                FROM Psicologo ps
+                JOIN Usuario u ON ps.id_usuario = u.id
+                LEFT JOIN Cita c ON ps.id = c.id_psicologo AND $whereSQL
+                LEFT JOIN Pago p ON c.id = p.id_cita AND p.estado_pago = 'pagado'
+                GROUP BY ps.id, u.nombre, ps.especialidad
+                ORDER BY total_citas DESC
+                LIMIT 10
+            ");
+            $stTopPs->execute($params);
+            $topPs = $stTopPs->fetchAll(PDO::FETCH_ASSOC);
+            
+            $dataPsicologos = [['Psicólogo', 'Especialidad', 'Total Citas', 'Ingresos']];
+            foreach($topPs as $ps) {
+                $dataPsicologos[] = [
+                    $ps['nombre'],
+                    $ps['especialidad'],
+                    $ps['total_citas'],
+                    '$' . number_format($ps['ingresos'], 2)
+                ];
+            }
+            
+            // HOJA 6: Top 10 Pacientes
+            $stTopPac = $pdo->prepare("
+                SELECT 
+                    pac.nombre,
+                    pac.dui,
+                    COUNT(c.id) as total_citas,
+                    COALESCE(SUM(p.monto_total), 0) as total_pagado
+                FROM Paciente pac
+                LEFT JOIN Cita c ON pac.id = c.id_paciente AND $whereSQL
+                LEFT JOIN Pago p ON c.id = p.id_cita AND p.estado_pago = 'pagado'
+                GROUP BY pac.id, pac.nombre, pac.dui
+                ORDER BY total_citas DESC
+                LIMIT 10
+            ");
+            $stTopPac->execute($params);
+            $topPac = $stTopPac->fetchAll(PDO::FETCH_ASSOC);
+            
+            $dataPacientes = [['Paciente', 'DUI', 'Total Citas', 'Total Pagado']];
+            foreach($topPac as $pac) {
+                $dataPacientes[] = [
+                    $pac['nombre'],
+                    $pac['dui'] ?? 'N/A',
+                    $pac['total_citas'],
+                    '$' . number_format($pac['total_pagado'], 2)
+                ];
+            }
+            
+            // HOJA 7: Horarios de Psicólogos
+            require_once __DIR__ . '/../Models/HorarioPsicologo.php';
+            $horarioModel = new HorarioPsicologo();
+            $psicologoModel = new Psicologo();
+            $psicologos = $psicologoModel->listarTodos();
+            
+            $dataHorarios = [['Psicólogo', 'Día', 'Hora Inicio', 'Hora Fin']];
+            foreach($psicologos as $ps) {
+                $horarios = $horarioModel->listarPorPsicologo($ps['id']);
+                if(empty($horarios)) {
+                    $dataHorarios[] = [$ps['nombre'], 'Sin horarios', '', ''];
+                } else {
+                    foreach($horarios as $h) {
+                        $dataHorarios[] = [
+                            $ps['nombre'],
+                            ucfirst($h['dia_semana']),
+                            date('h:i A', strtotime($h['hora_inicio'])),
+                            date('h:i A', strtotime($h['hora_fin']))
+                        ];
+                    }
+                }
+            }
+            
+            // Crear archivo Excel con todas las hojas
             $hojas = [
-                ['titulo' => 'Citas ' . $anio, 'data' => $dataCitas]
+                ['titulo' => 'RESUMEN', 'data' => $dataResumen],
+                ['titulo' => 'CITAS', 'data' => $dataCitas],
+                ['titulo' => 'CITAS POR ESTADO', 'data' => $dataEstados],
+                ['titulo' => 'INGRESOS POR MES', 'data' => $dataIngresos],
+                ['titulo' => 'TOP 10 PSICOLOGOS', 'data' => $dataPsicologos],
+                ['titulo' => 'TOP 10 PACIENTES', 'data' => $dataPacientes],
+                ['titulo' => 'HORARIOS', 'data' => $dataHorarios]
             ];
             
-            ExcelHelper::exportarMultiplesHojas($hojas, 'estadisticas_admin_' . $anio);
+            ExcelHelper::exportarMultiplesHojas($hojas, 'estadisticas_admin_' . $anio . ($mes ? '_' . $mes : ''));
         }
     }
     
