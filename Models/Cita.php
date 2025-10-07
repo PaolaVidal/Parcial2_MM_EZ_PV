@@ -82,7 +82,15 @@ class Cita extends BaseModel {
     }
 
     public function listarPaciente(int $idPaciente): array {
-        $st = $this->db->prepare("SELECT * FROM Cita WHERE id_paciente=? AND estado='activo' ORDER BY fecha_hora DESC");
+        $sql = "SELECT c.*, 
+                       u.nombre as psicologo_nombre,
+                       p.especialidad as psicologo_especialidad
+                FROM Cita c
+                LEFT JOIN Psicologo p ON c.id_psicologo = p.id
+                LEFT JOIN Usuario u ON p.id_usuario = u.id
+                WHERE c.id_paciente=? AND c.estado='activo' 
+                ORDER BY c.fecha_hora DESC";
+        $st = $this->db->prepare($sql);
         $st->execute([$idPaciente]);
         return $st->fetchAll();
     }

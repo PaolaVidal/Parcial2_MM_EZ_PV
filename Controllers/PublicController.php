@@ -6,6 +6,7 @@ require_once __DIR__ . '/../models/Cita.php';
 require_once __DIR__ . '/../models/Pago.php';
 require_once __DIR__ . '/../models/TicketPago.php';
 require_once __DIR__ . '/../models/SolicitudCambio.php';
+require_once __DIR__ . '/../models/HorarioPsicologo.php';
 
 class PublicController {
 
@@ -29,49 +30,43 @@ class PublicController {
         $this->render('portal');
     }
 
-    // Lista de psicólogos activos (no requiere DUI)
+    // Lista de psicólogos activos con sus horarios (no requiere DUI)
     public function disponibilidad(): void {
         $psicologos = (new Psicologo())->listarActivos();
+        $horarioModel = new HorarioPsicologo();
+        
+        // Agregar horarios a cada psicólogo
+        foreach($psicologos as &$p) {
+            $p['horarios'] = $horarioModel->listarPorPsicologo($p['id']);
+        }
+        
         $this->render('disponibilidad', ['psicologos'=>$psicologos]);
     }
 
-    // Paso 1: ingresar DUI
-    public function buscar_dui(): void {
+    // Login unificado: DUI + Código en una sola pantalla
+    public function acceso(): void {
         $pac = new Paciente();
         $msg = '';
         $dui = $_POST['dui'] ?? '';
+        $codigo = $_POST['codigo'] ?? '';
+        
         if($_SERVER['REQUEST_METHOD']==='POST'){
-            $row = $pac->getByDui($dui);
-            if($row){
-                $_SESSION['tmp_dui'] = $row['dui'];
-                header('Location: '.RUTA.'public/buscarDuiCodigo');
-                exit;
+            if(empty($dui) || empty($codigo)){
+                $msg = 'Por favor ingresa tu DUI y código de acceso';
             } else {
-                $msg = 'DUI no encontrado';
+                $row = $pac->getByDuiCodigo($dui, $codigo);
+                if($row){
+                    $_SESSION['paciente_id'] = $row['id'];
+                    $_SESSION['paciente_nombre'] = $row['nombre'];
+                    $_SESSION['paciente_dui'] = $row['dui'];
+                    header('Location: '.RUTA.'public/panel');
+                    exit;
+                } else {
+                    $msg = 'DUI o código de acceso incorrecto';
+                }
             }
         }
-        $this->render('public/buscar_dui', compact('msg','dui'));
-    }
-
-    public function buscarDuiCodigo(): void {
-        if(empty($_SESSION['tmp_dui'])){ header('Location: '.RUTA.'public/buscar_dui'); exit; }
-        $pac = new Paciente();
-        $msg = '';
-        if($_SERVER['REQUEST_METHOD']==='POST'){
-            $dui = $_SESSION['tmp_dui'];
-            $codigo = $_POST['codigo'] ?? '';
-            $row = $pac->getByDuiCodigo($dui,$codigo);
-            if($row){
-                unset($_SESSION['tmp_dui']);
-                $_SESSION['paciente_id'] = $row['id'];
-                header('Location: '.RUTA.'public/panel');
-                exit;
-            } else {
-                $msg = 'Código inválido';
-            }
-        }
-        $dui = $_SESSION['tmp_dui'];
-        $this->render('public/acceso', compact('msg','dui'));
+        $this->render('acceso', compact('msg','dui','codigo'));
     }
 
     // Panel tras validar código
@@ -110,19 +105,19 @@ class PublicController {
     }
 
     public function salir(): void {
-        unset($_SESSION['portal_paciente']);
+        unset($_SESSION['paciente_id'], $_SESSION['paciente_nombre'], $_SESSION['paciente_dui']);
         header('Location: '.RUTA.'public/portal');
         exit;
     }
 
     private function requirePortal(): array {
-        if (!isset($_SESSION['portal_paciente'])) {
-            header('Location: ' . RUTA . 'public/portal'); exit;
+        if (!isset($_SESSION['paciente_id'])) {
+            header('Location: ' . RUTA . 'public/acceso'); exit;
         }
-        $pac = (new Paciente())->getByCodigo($_SESSION['portal_paciente']['codigo']);
+        $pac = (new Paciente())->getById((int)$_SESSION['paciente_id']);
         if (!$pac) {
-            unset($_SESSION['portal_paciente']);
-            header('Location: ' . RUTA . 'public/portal'); exit;
+            unset($_SESSION['paciente_id'], $_SESSION['paciente_nombre'], $_SESSION['paciente_dui']);
+            header('Location: ' . RUTA . 'public/acceso'); exit;
         }
         return $pac;
     }

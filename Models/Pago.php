@@ -33,8 +33,15 @@ class Pago extends BaseModel {
     }
 
     public function listarPaciente(int $idPaciente): array {
-        $sql = "SELECT p.* FROM Pago p
+        $sql = "SELECT p.*, 
+                       c.fecha_hora as cita_fecha,
+                       c.motivo_consulta as cita_motivo,
+                       t.id as ticket_id,
+                       t.numero_ticket,
+                       t.qr_code as ticket_qr
+                FROM Pago p
                 JOIN Cita c ON c.id = p.id_cita
+                LEFT JOIN Ticket_Pago t ON t.id_pago = p.id
                 WHERE c.id_paciente=? AND p.estado='activo'
                 ORDER BY p.fecha DESC";
         $st = $this->db->prepare($sql);
