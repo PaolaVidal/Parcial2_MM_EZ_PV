@@ -97,9 +97,12 @@
               <i class="fas fa-qrcode"></i>
             </button>
           </td>
-          <td>
+          <td class="text-nowrap">
             <a class="btn btn-primary btn-sm" href="<?= $rutaVer ?>" title="Ver detalle">
-              <i class="fas fa-eye"></i> Ver
+              <i class="fas fa-eye"></i>
+            </a>
+            <a class="btn btn-danger btn-sm" href="<?= RUTA ?>ticket/pdf/<?= (int)$t['id'] ?>" target="_blank" title="Descargar PDF">
+              <i class="fas fa-file-pdf"></i>
             </a>
           </td>
         </tr>

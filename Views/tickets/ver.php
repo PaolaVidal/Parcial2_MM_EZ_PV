@@ -59,7 +59,83 @@
   .ticket-footer{text-align:center;font-size:.6rem;color:#777;margin-top:.75rem;}
   .actions{text-align:center;margin-top:1rem;display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;}
   .actions .btn{font-size:.8rem;padding:.45rem .85rem;}
-  @media print {body{background:#fff;} body *{visibility:hidden;} #ticketPrint,#ticketPrint *{visibility:visible;} #ticketPrint{position:absolute;left:0;top:0;width:100%;} .no-print{display:none!important;} .ticket{box-shadow:none;border-color:#000;} }
+  
+  /* Estilos de impresión mejorados */
+  @media print {
+    /* Resetear página */
+    @page {
+      size: auto;
+      margin: 10mm;
+    }
+    
+    /* Ocultar todo excepto el ticket */
+    body * {
+      visibility: hidden;
+    }
+    
+    /* Mostrar solo el contenido del ticket */
+    #ticketPrint,
+    #ticketPrint * {
+      visibility: visible;
+    }
+    
+    #ticketPrint {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      transform: translateX(-50%);
+      width: auto;
+      margin: 0;
+      padding: 0;
+    }
+    
+    /* Ocultar botones y elementos no necesarios */
+    .no-print,
+    .actions,
+    nav,
+    header,
+    footer,
+    .navbar,
+    .btn {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    
+    /* Ajustar estilos del ticket para impresión */
+    .ticket-wrapper {
+      max-width: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .ticket {
+      box-shadow: none !important;
+      border-color: #000 !important;
+      page-break-inside: avoid;
+    }
+    
+    /* Asegurar que el QR se imprima */
+    .qr-box img {
+      max-width: 180px;
+      height: auto;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    
+    /* Asegurar colores de badges */
+    .status-badge {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    
+    /* Ajustar backgrounds para impresión */
+    .kv {
+      background: #f5f5f5 !important;
+      border: 1px solid #ccc !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
 </style>
 <div id="ticketPrint" class="ticket-wrapper">
   <div class="ticket shadow-sm">
@@ -92,11 +168,21 @@
     <div class="ticket-footer">Este ticket es válido solo dentro de la plataforma. Conserve para su registro.</div>
   </div>
   <div class="actions no-print mt-3">
-    <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-1"></i>Imprimir</button>
-  <a class="btn btn-outline-secondary" id="btnDescargarQR" href="<?= htmlspecialchars($proxy) ?>?dl=1" ><i class="fas fa-download me-1"></i>QR</a>
-    <a href="<?= url('Pago','index') ?>" class="btn btn-secondary"><i class="fas fa-arrow-left me-1"></i>Volver</a>
+    <a class="btn btn-primary" href="<?= RUTA ?>ticket/pdf/<?= (int)$ticket['id'] ?>" target="_blank">
+      <i class="fas fa-file-pdf me-1"></i>Descargar PDF
+    </a>
+    <button class="btn btn-outline-primary" onclick="imprimirTicket()">
+      <i class="fas fa-print me-1"></i>Imprimir (Navegador)
+    </button>
+    <a class="btn btn-outline-secondary" id="btnDescargarQR" href="<?= htmlspecialchars($proxy) ?>?dl=1">
+      <i class="fas fa-qrcode me-1"></i>Descargar QR
+    </a>
+    <a href="javascript:history.back()" class="btn btn-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Volver
+    </a>
   </div>
 </div>
+
 <script>
 // Intentar recargar QR sin cache si falla
 const img = document.getElementById('qrTicketImg');
@@ -108,4 +194,46 @@ if(img){
     }
   });
 }
+
+// Función mejorada de impresión
+function imprimirTicket() {
+  // Asegurar que la imagen QR esté cargada antes de imprimir
+  const qrImg = document.getElementById('qrTicketImg');
+  
+  if (qrImg && !qrImg.complete) {
+    // Si la imagen aún no está cargada, esperar
+    qrImg.onload = function() {
+      setTimeout(() => window.print(), 150);
+    };
+    qrImg.onerror = function() {
+      const confirmPrint = confirm('Advertencia: El código QR no se pudo cargar completamente.\n\n¿Desea continuar con la impresión de todas formas?');
+      if (confirmPrint) {
+        setTimeout(() => window.print(), 100);
+      }
+    };
+  } else {
+    // Imagen ya cargada, imprimir inmediatamente
+    window.print();
+  }
+}
+
+// Atajos de teclado
+document.addEventListener('keydown', function(e) {
+  // Ctrl+P para imprimir
+  if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+    e.preventDefault();
+    imprimirTicket();
+  }
+  
+  // Ctrl+D para descargar PDF
+  if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+    e.preventDefault();
+    window.location.href = '<?= RUTA ?>ticket/pdf/<?= (int)$ticket['id'] ?>';
+  }
+});
+
+// Mensaje después de imprimir (opcional)
+window.addEventListener('afterprint', function() {
+  console.log('Ticket impreso exitosamente');
+});
 </script>

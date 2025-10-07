@@ -4,6 +4,7 @@ require_once __DIR__ . '/../models/TicketPago.php';
 require_once __DIR__ . '/../models/Pago.php';
 require_once __DIR__ . '/../models/Psicologo.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
+require_once __DIR__ . '/../helpers/PDFHelper.php';
 
 class TicketController {
 
@@ -123,6 +124,40 @@ class TicketController {
         if($download){ header('Content-Disposition: attachment; filename="ticket_'.$id.'.png"'); }
         header('Content-Length: '.filesize($rutaFs));
         readfile($rutaFs);
+    }
+
+    // /ticket/pdf/{idTicket} - Generar PDF del ticket
+    public function pdf($id = 0): void {
+        $id = (int)$id;
+        if ($id <= 0) {
+            http_response_code(400);
+            echo 'ID inválido';
+            return;
+        }
+        
+        $model = new TicketPago();
+        $ticket = $model->obtener($id);
+        
+        if (!$ticket) {
+            http_response_code(404);
+            echo 'Ticket no encontrado';
+            return;
+        }
+        
+        // Obtener datos de pago asociados
+        $pagoModel = new Pago();
+        $pago = null;
+        if (isset($ticket['id_pago'])) {
+            $pago = $pagoModel->obtener((int)$ticket['id_pago']);
+        }
+        
+        // Generar PDF
+        try {
+            PDFHelper::generarTicketPDF($ticket, $pago);
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo 'Error generando PDF: ' . $e->getMessage();
+        }
     }
 
     /** Mapear usuario logueado (rol psicologo) a Psicologo.id */

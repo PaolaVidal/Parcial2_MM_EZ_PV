@@ -68,7 +68,10 @@
           <td>
             <button class="btn btn-outline-secondary btn-sm" onclick="mostrarQRModalTicket('<?= $qr ?>','<?= $qrContenido ?>')">QR</button>
           </td>
-          <td><a class="btn btn-primary btn-sm" href="<?= $rutaVer ?>">Ver</a></td>
+          <td class="text-nowrap">
+            <a class="btn btn-primary btn-sm" href="<?= $rutaVer ?>" title="Ver detalle"><i class="fas fa-eye"></i></a>
+            <a class="btn btn-danger btn-sm" href="<?= RUTA ?>ticket/pdf/<?= (int)$t['id'] ?>" target="_blank" title="Descargar PDF"><i class="fas fa-file-pdf"></i></a>
+          </td>
         </tr>
       <?php endforeach; ?>
       </tbody>
