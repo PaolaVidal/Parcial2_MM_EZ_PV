@@ -343,30 +343,63 @@ function reiniciarScannerTicket(){
 }
 
 function onScanTicket(decoded){ 
+  console.log('QR detectado:', decoded);
   procesarTokenTicket(decoded.trim(), true); 
 }
 
 function procesarTokenTicket(token, desdeCam){
-  if(!token) return;
+  console.log('Procesando token:', token, 'Desde cámara:', desdeCam);
+  
+  if(!token) {
+    mostrarScanMsgTicket('Token vacío','warning');
+    return;
+  }
+  
   if(!token.startsWith('PAGO:')){ 
-    mostrarScanMsgTicket('Formato inválido. Use PAGO:ID','danger'); 
+    mostrarScanMsgTicket('⚠️ Formato inválido. Se esperaba PAGO:ID, recibido: ' + token.substring(0,20),'danger');
+    console.warn('Token inválido:', token);
     return; 
   }
+  
   if(desdeCam){
-    if(token===ultimoTokenTicket) return; // evitar repetir
+    if(token===ultimoTokenTicket) {
+      console.log('Token duplicado, ignorando');
+      return; // evitar repetir
+    }
     ultimoTokenTicket=token;
-    if(cooldownTicket) return;
+    if(cooldownTicket) {
+      console.log('En cooldown, ignorando');
+      return;
+    }
     cooldownTicket=true;
     setTimeout(()=>cooldownTicket=false, 1200);
   }
   
   const idPago = token.substring(5);
+  console.log('ID Pago extraído:', idPago);
   mostrarScanMsgTicket('Consultando pago #'+idPago+'...','info');
   
   // Consultar datos del ticket por ID de pago (endpoint JSON)
-  fetch(BASE+'index.php?url=ticket/consultarPago/'+encodeURIComponent(idPago))
-    .then(r=>r.json())
+  const url = BASE+'index.php?url=ticket/consultarPago/'+encodeURIComponent(idPago);
+  console.log('Consultando URL:', url);
+  
+  fetch(url)
+    .then(r=>{
+      console.log('Respuesta status:', r.status);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.text();
+    })
+    .then(text=>{
+      console.log('Respuesta raw:', text.substring(0,200));
+      try {
+        return JSON.parse(text);
+      } catch(e) {
+        console.error('Error parseando JSON:', e);
+        throw new Error('Respuesta no es JSON válido: ' + text.substring(0,100));
+      }
+    })
     .then(j=>{
+      console.log('JSON parseado:', j);
       if(!j.ok){
         mostrarScanMsgTicket(j.msg || 'Error desconocido','danger');
         document.getElementById('scanResultadoTicket').innerHTML='<div class="alert alert-warning">'+htmlEscape(j.msg)+'</div>';
@@ -403,8 +436,8 @@ function procesarTokenTicket(token, desdeCam){
     })
     .catch(e=>{
       console.error('Error consultando ticket:', e);
-      mostrarScanMsgTicket('Error de red o servidor','danger');
-      document.getElementById('scanResultadoTicket').innerHTML='<div class="alert alert-danger">Fallo de conexión</div>';
+      mostrarScanMsgTicket('❌ Error: ' + e.message,'danger');
+      document.getElementById('scanResultadoTicket').innerHTML='<div class="alert alert-danger"><strong>Error:</strong> '+htmlEscape(e.message)+'</div>';
     });
 }
 

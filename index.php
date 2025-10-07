@@ -77,7 +77,7 @@ if (isset($_GET['url'])) {
     $rawEndpoints = [
         // Endpoints que deben devolver JSON o respuesta sin envolver en layout
         'psicologo' => ['slots','scanProcesar','scanConsultar','scanConfirmar'],
-        'ticket'    => ['qr','pdf'],
+        'ticket'    => ['qr','pdf','consultarPago'],
         // ejemplo: 'estadisticas' => ['exportar_pdf','exportar_excel']
     ];
 

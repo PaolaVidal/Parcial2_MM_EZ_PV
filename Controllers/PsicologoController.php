@@ -326,7 +326,7 @@ class PsicologoController {
             $codigo = strtoupper(substr(hash('sha256','pago'.$idPago.microtime()),0,10));
             $numero = $idPago; // simple correlativo
             try {
-                $qrRuta = QRHelper::generarQR('PAGO:'.$idPago,'ticket','ticket_'.$idPago.'.png');
+                $qrRuta = QRHelper::generarQR('PAGO:'.$idPago,'ticket','ticket_'.$idPago);
             } catch(Throwable $e){ $qrRuta=''; }
             $ticketM->crear([
                 'id_pago'=>$idPago,
