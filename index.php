@@ -150,8 +150,7 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
                             }
                     ?>
     <li class="nav-item"><a class="nav-link <?= isAct($seg0,$seg1,'psicologo','dashboard')?'active fw-semibold':'' ?>" href="<?= url('psicologo','dashboard') ?>"><i class="fas fa-chart-pie me-1"></i>Dashboard</a></li>
-    <li class="nav-item"><a class="nav-link <?= isAct($seg0,$seg1,'psicologo','citas')?'active fw-semibold':'' ?>" href="<?= url('psicologo','citas') ?>"><i class="fas fa-list me-1"></i>Mis Citas</a></li>
-    <li class="nav-item"><a class="nav-link <?= isAct($seg0,$seg1,'psicologo','scan')?'active fw-semibold':'' ?>" href="<?= url('psicologo','scan') ?>"><i class="fas fa-qrcode me-1"></i>Escanear</a></li>
+    <li class="nav-item"><a class="nav-link <?= isAct($seg0,$seg1,'psicologo','citas')?'active fw-semibold':'' ?>" href="<?= url('psicologo','citas') ?>"><i class="fas fa-list me-1"></i>Citas</a></li>
     <li class="nav-item"><a class="nav-link <?= ($seg0==='ticket')?'active fw-semibold':'' ?>" href="<?= url('ticket') ?>"><i class="fas fa-ticket me-1"></i>Tickets</a></li>
                     <?php elseif ($rol === 'admin'): 
                         $seg = explode('/', $urlActual);
