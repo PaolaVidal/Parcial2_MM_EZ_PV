@@ -89,25 +89,8 @@ class PDFHelper {
         
         $dompdf = new \Dompdf\Dompdf($options);
         
-        // SOLUCIÓN: No usar loadHtml() porque requiere HTML5 parser
-        // En su lugar, crear DOMDocument manualmente y usar loadDOM()
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        $dom->encoding = 'UTF-8';
-        
-        // Configurar opciones para evitar errores
-        libxml_use_internal_errors(true);
-        
-        // Convertir entidades y limpiar HTML
-        $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');
-        
-        // Cargar HTML en DOMDocument (método nativo de PHP, no requiere Masterminds)
-        $dom->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD | LIBXML_NOWARNING | LIBXML_NOERROR);
-        
-        // Limpiar errores
-        libxml_clear_errors();
-        
-        // Usar loadDOM en lugar de loadHtml
-        $dompdf->loadDOM($dom);
+        // Cargar HTML de forma simple
+        $dompdf->loadHtml($html);
         
         // Configurar papel
         $dompdf->setPaper($size, $orientation);

@@ -638,8 +638,8 @@ class PsicologoController {
         // Nombre del archivo con fecha
         $filename = 'Estadisticas_Psicologo_' . date('Y-m-d_His');
         
-        // Exportar
-        ExcelHelper::exportarMultiplesSecciones($sheets, $filename);
+        // Intentar exportar a Excel XLSX, si falla usará CSV automáticamente
+        ExcelHelper::exportarMultiplesHojas($sheets, $filename, 'Estadísticas Psicólogo');
     }
 
     public function exportarEstadisticasPDF(): void {
@@ -662,15 +662,14 @@ class PsicologoController {
         
         // Obtener nombre del psicólogo
         $psico = new Psicologo();
-        $dataPsico = $psico->obtener($idPsico);
+        $dataPsico = $psico->get($idPsico);
         $nombrePsico = $dataPsico['nombre'] ?? 'Psicólogo';
         
-        // Generar HTML para el PDF
-        $html = '
-        <!DOCTYPE html>
+        // Generar HTML para el PDF (HTML 4.01 para evitar parser HTML5)
+        $html = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
         <html>
         <head>
-            <meta charset="UTF-8">
+            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
             <style>
                 body { font-family: Arial, sans-serif; font-size: 11px; }
                 h1 { color: #2c3e50; text-align: center; font-size: 18px; margin-bottom: 5px; }
@@ -842,8 +841,8 @@ class PsicologoController {
         </body>
         </html>';
         
-        // Generar PDF
-        $filename = 'Estadisticas_' . date('Y-m-d_His') . '.pdf';
+        // Generar PDF (PDFHelper agrega .pdf automáticamente)
+        $filename = 'Estadisticas_' . date('Y-m-d_His');
         PDFHelper::generarPDF($html, $filename, true);
     }
 }

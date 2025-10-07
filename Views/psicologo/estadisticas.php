@@ -9,10 +9,10 @@
         <a href="<?= RUTA ?>psicologo/dashboard" class="btn btn-outline-secondary btn-sm me-2">
             <i class="fas fa-arrow-left me-1"></i> Volver
         </a>
-        <a href="<?= RUTA ?>psicologo/exportarEstadisticasExcel" class="btn btn-success btn-sm me-2">
+        <a href="<?= RUTA ?>psicologo/exportarEstadisticasExcel" class="btn btn-success btn-sm me-2" title="Descarga archivo Excel profesional con formato">
             <i class="fas fa-file-excel me-1"></i> Exportar Excel
         </a>
-        <a href="<?= RUTA ?>psicologo/exportarEstadisticasPDF" class="btn btn-danger btn-sm" target="_blank">
+        <a href="<?= RUTA ?>psicologo/exportarEstadisticasPDF" class="btn btn-danger btn-sm" target="_blank" title="Abre PDF en nueva pestaña">
             <i class="fas fa-file-pdf me-1"></i> Exportar PDF
         </a>
     </div>
