@@ -46,4 +46,20 @@ class TicketPago extends BaseModel {
         $st->execute([$idPsicologo]);
         return $st->fetchAll();
     }
+
+    /** Listar TODOS los tickets del sistema (para admin) con datos completos */
+    public function listarTodos(): array {
+        $sql = "SELECT t.*, p.monto_total, p.estado_pago, c.fecha_hora, c.id as id_cita, c.id_psicologo,
+                       pac.id as id_paciente, COALESCE(pac.nombre, CONCAT('Paciente #', pac.id)) nombre_paciente,
+                       u.nombre as psicologo_nombre
+                FROM Ticket_Pago t
+                JOIN Pago p ON p.id = t.id_pago
+                JOIN Cita c ON c.id = p.id_cita
+                LEFT JOIN Paciente pac ON pac.id = c.id_paciente
+                LEFT JOIN Psicologo ps ON ps.id = c.id_psicologo
+                LEFT JOIN Usuario u ON u.id = ps.id_usuario
+                WHERE t.estado='activo'
+                ORDER BY t.fecha_emision DESC";
+        return $this->db->query($sql)->fetchAll();
+    }
 }

@@ -339,6 +339,15 @@ class AdminController {
         $this->render('pagos',[ 'pendientes'=>$pendientes,'ingresosMes'=>$ingresosMes,'ingPorPsico'=>$ingPorPsico ]);
     }
 
+    /* ================== Tickets =================== */
+    public function tickets(): void {
+        $this->requireAdmin();
+        require_once __DIR__ . '/../Models/TicketPago.php';
+        $ticketModel = new TicketPago();
+        $tickets = $ticketModel->listarTodos();
+        $this->render('tickets',[ 'tickets'=>$tickets ]);
+    }
+
     /* ================== Horarios Psicólogos =================== */
     public function horarios(): void {
         $this->requireAdmin();
