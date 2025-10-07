@@ -90,19 +90,32 @@ class PDFHelper {
         $dompdf = new \Dompdf\Dompdf($options);
         
         // CRÍTICO: dompdf requiere la clase Masterminds\HTML5 que no tenemos
-        // SOLUCIÓN: Crear una clase stub vacía para evitar el error fatal
+        // SOLUCIÓN: Crear una clase stub con todos los métodos que dompdf necesita
         if (!class_exists('Masterminds\\HTML5')) {
-            // Crear namespace y clase dummy
             eval('
                 namespace Masterminds {
                     class HTML5 {
-                        public function __construct($options = array()) {}
+                        private $dom;
+                        
+                        public function __construct($options = array()) {
+                            $this->dom = new \\DOMDocument();
+                        }
+                        
                         public function loadHTML($html) { 
                             $dom = new \\DOMDocument();
-                            @$dom->loadHTML($html);
+                            @$dom->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+                            $this->dom = $dom;
                             return $dom;
                         }
+                        
                         public function save($dom) {
+                            return $dom->saveHTML();
+                        }
+                        
+                        public function saveHTML($dom = null) {
+                            if ($dom === null) {
+                                $dom = $this->dom;
+                            }
                             return $dom->saveHTML();
                         }
                     }
