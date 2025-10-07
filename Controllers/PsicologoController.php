@@ -3,9 +3,29 @@ require_once __DIR__ . '/../models/Cita.php';
 require_once __DIR__ . '/../models/Paciente.php';
 require_once __DIR__ . '/../models/Pago.php';
 require_once __DIR__ . '/../models/TicketPago.php';
+require_once __DIR__ . '/../models/Psicologo.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
 
 class PsicologoController {
+
+    /** Obtiene el id real del psicólogo (tabla Psicologo.id) a partir del usuario logueado.
+     *  Cachea sólo si encuentra un id válido (>0). */
+    private function currentPsicologoId(): int {
+        $this->requirePsicologo();
+        if(isset($_SESSION['psicologo_id']) && (int)$_SESSION['psicologo_id'] > 0){
+            return (int)$_SESSION['psicologo_id'];
+        }
+        $idUsuario = (int)$_SESSION['usuario']['id'];
+        $modelo = new Psicologo();
+        $row = $modelo->obtenerPorUsuario($idUsuario);
+        if($row){
+            $_SESSION['psicologo_id'] = (int)$row['id'];
+            return (int)$row['id'];
+        }
+        // Si no existe registro en Psicologo, devolver 0 (esto causará error en slots/crear) y dejar pista
+        $_SESSION['diag_psicologo_id'] = 'No hay fila en Psicologo para id_usuario='.$idUsuario;
+        return 0;
+    }
 
     private function requirePsicologo(): void {
         if(!isset($_SESSION['usuario']) || $_SESSION['usuario']['rol'] !== 'psicologo'){
@@ -24,7 +44,7 @@ class PsicologoController {
 
     public function dashboard(): void {
         $this->requirePsicologo();
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         $pagoM = new Pago();
         $slots = $citaM->proximosSlots($idPsico,5);
@@ -56,7 +76,7 @@ class PsicologoController {
             $this->slots();
             return;
         }
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         $pacM = new Paciente();
     $list = $citaM->listarPsicologo($idPsico);
@@ -73,7 +93,8 @@ class PsicologoController {
     public function crear(): void {
         $this->requirePsicologo();
     if($_SERVER['REQUEST_METHOD'] !== 'POST'){ header('Location: index.php?url=psicologo/citas'); return; }
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
+    if($idPsico <= 0){ header('Location: index.php?url=psicologo/citas&err=psico'); return; }
         $idPaciente = (int)($_POST['id_paciente'] ?? 0);
         $fecha = trim($_POST['fecha_hora'] ?? '');
         $motivo = trim($_POST['motivo_consulta'] ?? '');
@@ -159,7 +180,7 @@ class PsicologoController {
     public function scanProcesar(): void {
         $this->requirePsicologo();
         $rawInput = trim($_POST['token'] ?? '');
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         // Nueva política: solo aceptar formato QR oficial CITA:<id>
         if(stripos($rawInput,'CITA:')!==0){
@@ -188,7 +209,7 @@ class PsicologoController {
     public function scanConsultar(): void {
         $this->requirePsicologo();
         $rawInput = trim($_POST['token'] ?? '');
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         if(stripos($rawInput,'CITA:')!==0){
             $res=['ok'=>false,'msg'=>'Formato inválido. Use CITA:<id>'];
@@ -210,7 +231,7 @@ class PsicologoController {
     // Nuevo: confirmar asistencia explícita
     public function scanConfirmar(): void {
         $this->requirePsicologo();
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
         $id = (int)($_POST['id'] ?? 0);
         $citaM = new Cita();
         $cita = $citaM->obtener($id);
@@ -232,7 +253,8 @@ class PsicologoController {
         $fecha = $_GET['fecha'] ?? date('Y-m-d');
         $interval = (int)($_GET['interval'] ?? 30);
         if(!in_array($interval,[30,60],true)) $interval=30;
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
+    if($idPsico <= 0){ echo json_encode(['error'=>'psicologo_no_mapeado','diag'=>($_SESSION['diag_psicologo_id']??'')]); return; }
         // Validar formato fecha
         if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$fecha)){
             echo json_encode(['error'=>'formato_fecha']); return; }
@@ -291,7 +313,8 @@ class PsicologoController {
         $citaM = new Cita();
         $cita = $citaM->obtener($idCita);
     if(!$cita){ header('Location: index.php?url=psicologo/citas&err=nf'); return; }
-        $idPsico = (int)$_SESSION['usuario']['id'];
+    $idPsico = $this->currentPsicologoId();
+    if($idPsico <= 0){ header('Location: index.php?url=psicologo/citas&err=psico'); return; }
     if((int)$cita['id_psicologo'] !== $idPsico){ header('Location: index.php?url=psicologo/citas&err=own'); return; }
     if($cita['estado_cita'] !== 'realizada'){ header('Location: index.php?url=psicologo/citas&err=estado'); return; }
         $pagoM = new Pago();

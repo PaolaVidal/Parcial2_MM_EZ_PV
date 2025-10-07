@@ -2,6 +2,7 @@
 /** Controlador de Tickets (router: /ticket/accion/id) */
 require_once __DIR__ . '/../models/TicketPago.php';
 require_once __DIR__ . '/../models/Pago.php';
+require_once __DIR__ . '/../models/Psicologo.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
 
 class TicketController {
@@ -25,7 +26,11 @@ class TicketController {
     public function index(): void {
         // Si es psicólogo autenticado mostrar sus tickets
         if(isset($_SESSION['usuario']) && ($_SESSION['usuario']['rol'] ?? '')==='psicologo'){
-            $idPs = (int)$_SESSION['usuario']['id'];
+            $idPs = $this->mapUserToPsicologoId();
+            if($idPs <= 0){
+                echo '<div class="alert alert-warning">No se encontró el identificador del psicólogo para este usuario.</div>';
+                return;
+            }
             $model = new TicketPago();
             $tickets = $model->listarPorPsicologo($idPs);
             $this->render('tickets/lista_psicologo',[ 'tickets'=>$tickets ]);
@@ -118,5 +123,16 @@ class TicketController {
         if($download){ header('Content-Disposition: attachment; filename="ticket_'.$id.'.png"'); }
         header('Content-Length: '.filesize($rutaFs));
         readfile($rutaFs);
+    }
+
+    /** Mapear usuario logueado (rol psicologo) a Psicologo.id */
+    private function mapUserToPsicologoId(): int {
+        if(!isset($_SESSION['usuario']) || ($_SESSION['usuario']['rol']??'')!=='psicologo') return 0;
+        if(isset($_SESSION['psicologo_id']) && (int)$_SESSION['psicologo_id']>0) return (int)$_SESSION['psicologo_id'];
+        $idUsuario = (int)$_SESSION['usuario']['id'];
+        $m = new Psicologo();
+        $row = $m->obtenerPorUsuario($idUsuario);
+        if($row){ $_SESSION['psicologo_id'] = (int)$row['id']; return (int)$row['id']; }
+        return 0;
     }
 }

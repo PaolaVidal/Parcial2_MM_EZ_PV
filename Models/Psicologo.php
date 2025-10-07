@@ -148,7 +148,7 @@ class Psicologo extends BaseModel {
         $sql = "SELECT p.*, u.nombre, u.email, u.estado
                 FROM {$this->tPsicologo} p
                 JOIN {$this->tUsuario} u ON u.id = p.id_usuario
-                WHERE u.estado = 'activo'";
+                WHERE u.estado = 'activo' AND u.rol='psicologo'";
         return $this->q($sql)->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -156,6 +156,7 @@ class Psicologo extends BaseModel {
         $sql = "SELECT p.*, u.nombre, u.email, u.estado
                 FROM {$this->tPsicologo} p
                 JOIN {$this->tUsuario} u ON u.id = p.id_usuario
+                WHERE u.rol='psicologo'
                 ORDER BY u.nombre";
         return $this->q($sql)->fetchAll(PDO::FETCH_ASSOC);
     }

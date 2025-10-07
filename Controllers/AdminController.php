@@ -156,6 +156,52 @@ class AdminController {
         $this->requireAdmin();
         $citaModel = new Cita();
         $psModel   = new Psicologo();
+        // JSON fetch (AJAX list)
+        if(isset($_GET['ajax']) && $_GET['ajax']==='list'){
+            header('Content-Type: application/json');
+            echo json_encode(['citas'=>$this->filtrarCitasAdmin($citaModel)]);
+            return;
+        }
+        // AJAX slots para un psicólogo destino en fecha dada (para reasignar)
+        if(isset($_GET['ajax']) && $_GET['ajax']==='slots'){
+            header('Content-Type: application/json');
+            $idPs = (int)($_GET['ps'] ?? 0);
+            $fecha = $_GET['fecha'] ?? date('Y-m-d');
+            $interval = 30; // fijo
+            $resp = ['ps'=>$idPs,'fecha'=>$fecha,'slots'=>[]];
+            if(!$idPs || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$fecha)){ echo json_encode($resp); return; }
+            // Obtener bloques horario (similar a PsicologoController::slots)
+            require_once __DIR__ . '/../models/HorarioPsicologo.php';
+            $diaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
+            $dt = DateTime::createFromFormat('Y-m-d',$fecha);
+            if(!$dt){ echo json_encode($resp); return; }
+            $diaBD = $diaMap[$dt->format('D')] ?? 'lunes';
+            // Variantes sin acento para compatibilidad (miercoles, sabado)
+            $variants = [$diaBD];
+            if($diaBD==='miércoles') $variants[]='miercoles';
+            if($diaBD==='sábado') $variants[]='sabado';
+            $placeholders = implode(',', array_fill(0,count($variants),'?'));
+            $pdo = $citaModel->pdo();
+            $stH = $pdo->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana IN ($placeholders) ORDER BY hora_inicio");
+            $stH->execute(array_merge([$idPs],$variants));
+            $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
+            if(!$bloques){ echo json_encode($resp); return; }
+            $stC = $pdo->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
+            $stC->execute([$idPs,$fecha]);
+            $ocup = [];
+            foreach($stC->fetchAll(PDO::FETCH_ASSOC) as $r){ $ocup[substr($r['fecha_hora'],11,5)]=true; }
+            $slots=[]; $now=new DateTime(); $isToday=$fecha===$now->format('Y-m-d');
+            foreach($bloques as $b){
+                $ini = new DateTime($fecha.' '.$b['hora_inicio']);
+                $fin = new DateTime($fecha.' '.$b['hora_fin']);
+                while($ini < $fin){
+                    $h=$ini->format('H:i');
+                    if(!isset($ocup[$h]) && (!$isToday || $ini > $now)) $slots[]=$h;
+                    $ini->modify('+'.$interval.' minutes');
+                }
+            }
+            sort($slots); $resp['slots']=$slots; $resp['dia']=$diaBD; echo json_encode($resp); return;
+        }
 
         if($_SERVER['REQUEST_METHOD']==='POST'){
             $op = $_POST['op'] ?? '';
@@ -164,48 +210,82 @@ class AdminController {
                 switch($op){
                     case 'cancelar':
                         $motivo = trim($_POST['motivo'] ?? '');
-                        if($id && $motivo){
-                            $citaModel->cancelar($id,$motivo);
-                        }
+                        if($id && $motivo){ $citaModel->cancelar($id,$motivo); }
                         break;
                     case 'reprogramar':
                         $fh = trim($_POST['fecha_hora'] ?? '');
                         if($id && $fh){
-                            $citaModel->reprogramar($id,$fh);
+                            // Mantener formato y validar minutos 00/30
+                            $dt = DateTime::createFromFormat('Y-m-d\TH:i',$fh) ?: DateTime::createFromFormat('Y-m-d H:i',$fh);
+                            if(!$dt) throw new Exception('Formato fecha/hora inválido');
+                            $m = (int)$dt->format('i'); if($m!==0 && $m!==30) throw new Exception('Minutos deben ser 00 ó 30');
+                            $citaModel->reprogramar($id,$dt->format('Y-m-d H:i:00'));
                         }
                         break;
                     case 'reasignar':
                         $ps = (int)($_POST['id_psicologo'] ?? 0);
-                        if($id && $ps){
-                            if(method_exists($citaModel,'reasignarPsicologo')){
-                                $citaModel->reasignarPsicologo($id,$ps);
-                            } elseif(method_exists($citaModel,'reasignar')){
-                                $citaModel->reasignar($id,$ps);
-                            } else {
-                                throw new Exception('No existe método de reasignación en Cita');
-                            }
+                        $fhSel = trim($_POST['fecha_hora'] ?? ''); // nuevo slot seleccionado
+                        if($id && $ps && $fhSel){
+                            $cita = $citaModel->obtener($id);
+                            if(!$cita) throw new Exception('Cita no encontrada');
+                            if($cita['estado_cita']==='realizada') throw new Exception('No se puede reasignar una cita realizada');
+                            $dt = DateTime::createFromFormat('Y-m-d H:i:s',$fhSel) ?: DateTime::createFromFormat('Y-m-d H:i',$fhSel);
+                            if(!$dt) throw new Exception('Fecha/hora nueva inválida');
+                            $m=(int)$dt->format('i'); if($m!==0 && $m!==30) throw new Exception('Minutos deben ser 00 o 30');
+                            $fhFmt = $dt->format('Y-m-d H:i:00');
+                            if(!$this->psicologoDisponible($citaModel,$ps,$fhFmt,0)) throw new Exception('Destino ocupado en ese horario');
+                            // Actualizar psicólogo y fecha/hora
+                            $pdo = $citaModel->pdo();
+                            $st = $pdo->prepare("UPDATE Cita SET id_psicologo=?, fecha_hora=?, estado_cita='pendiente' WHERE id=?");
+                            $st->execute([$ps,$fhFmt,$id]);
                         }
                         break;
                 }
-            } catch(Exception $e){
-                $_SESSION['flash_error'] = $e->getMessage();
-            }
+            } catch(Exception $e){ $_SESSION['flash_error'] = $e->getMessage(); }
             header('Location: '.url('admin','citas'));
             exit;
         }
 
-        if(method_exists($citaModel,'citasPorRango')){
-            $citas = $citaModel->citasPorRango(date('Y-m-01'),'2999-12-31');
-        } elseif(method_exists($citaModel,'todas')){
-            $citas = $citaModel->todas();
-        } else {
-            $citas = [];
-        }
         $psicologos = method_exists($psModel,'listarActivos')
             ? $psModel->listarActivos()
             : (method_exists($psModel,'listarTodos') ? $psModel->listarTodos() : []);
 
+        $citas = $this->filtrarCitasAdmin($citaModel);
         $this->render('citas',[ 'citas'=>$citas,'psicologos'=>$psicologos ]);
+    }
+
+    // Aplica filtros GET: estado, fecha, texto (id, motivo), psicologo
+    private function filtrarCitasAdmin(Cita $citaModel): array {
+        if(method_exists($citaModel,'citasPorRango')){
+            $base = $citaModel->citasPorRango(date('Y-m-01'),'2999-12-31');
+        } elseif(method_exists($citaModel,'todas')){
+            $base = $citaModel->todas();
+        } else { $base = []; }
+        $estado = $_GET['estado'] ?? '';
+        $fecha  = $_GET['fecha'] ?? '';
+        $texto  = strtolower(trim($_GET['texto'] ?? ''));
+        $ps     = (int)($_GET['ps'] ?? 0);
+        return array_values(array_filter($base,function($c) use($estado,$fecha,$texto,$ps){
+            if($estado && $c['estado_cita']!==$estado) return false;
+            if($fecha && substr($c['fecha_hora'],0,10)!==$fecha) return false;
+            if($ps && (int)$c['id_psicologo']!==$ps) return false;
+            if($texto){
+                $hay = false;
+                if(strpos((string)$c['id'],$texto)!==false) $hay=true;
+                elseif(isset($c['motivo_consulta']) && strpos(strtolower($c['motivo_consulta']),$texto)!==false) $hay=true;
+                elseif(strpos((string)$c['id_paciente'],$texto)!==false) $hay=true;
+                if(!$hay) return false;
+            }
+            return true;
+        }));
+    }
+
+    private function psicologoDisponible(Cita $citaModel,int $idPs,string $fechaHora,int $excluirId=0): bool {
+        // Checar si ya existe cita en ese horario exacto
+        $pdo = $citaModel->pdo();
+        $st = $pdo->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND fecha_hora=? AND id<>? AND estado='activo'");
+        $st->execute([$idPs,$fechaHora,$excluirId]);
+        return (int)$st->fetchColumn()===0;
     }
 
     /* ================== Pagos =================== */
