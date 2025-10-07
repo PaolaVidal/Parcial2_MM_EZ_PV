@@ -1,9 +1,9 @@
 <?php
-require_once __DIR__ . '/../models/Cita.php';
-require_once __DIR__ . '/../models/Paciente.php';
-require_once __DIR__ . '/../models/Pago.php';
-require_once __DIR__ . '/../models/TicketPago.php';
-require_once __DIR__ . '/../models/Psicologo.php';
+require_once __DIR__ . '/../Models/Cita.php';
+require_once __DIR__ . '/../Models/Paciente.php';
+require_once __DIR__ . '/../Models/Pago.php';
+require_once __DIR__ . '/../Models/TicketPago.php';
+require_once __DIR__ . '/../Models/Psicologo.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
 
 class PsicologoController {
@@ -112,7 +112,7 @@ class PsicologoController {
         $now = new DateTime();
     if($fh <= $now){ header('Location: index.php?url=psicologo/citas&err=pasado'); return; }
         // Validar contra horarios configurados en Horario_Psicologo
-        require_once __DIR__ . '/../models/HorarioPsicologo.php';
+        require_once __DIR__ . '/../Models/HorarioPsicologo.php';
         $diaSemanaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
         $diaBD = $diaSemanaMap[$fh->format('D')] ?? 'lunes';
         // Variantes sin acento para compatibilidad con datos existentes (miercoles/sabado)
@@ -262,7 +262,7 @@ class PsicologoController {
         $fReq = DateTime::createFromFormat('Y-m-d',$fecha);
         if($fReq < $hoy){ echo json_encode(['error'=>'fecha_pasada']); return; }
         // Obtener horarios configurados para ese día de semana
-    require_once __DIR__ . '/../models/HorarioPsicologo.php';
+    require_once __DIR__ . '/../Models/HorarioPsicologo.php';
     $diaSemanaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
     $diaBD = $diaSemanaMap[$fReq->format('D')] ?? 'lunes';
     $pdo = (new Cita())->pdo();

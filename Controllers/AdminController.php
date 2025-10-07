@@ -1,10 +1,11 @@
 <?php
-require_once __DIR__ . '/../models/Usuario.php';
-require_once __DIR__ . '/../models/Paciente.php';
-require_once __DIR__ . '/../models/Psicologo.php';
-require_once __DIR__ . '/../models/Cita.php';
-require_once __DIR__ . '/../models/Pago.php';
-require_once __DIR__ . '/../models/HorarioPsicologo.php';
+require_once __DIR__ . '/../Models/Usuario.php';
+require_once __DIR__ . '/../Models/Paciente.php';
+require_once __DIR__ . '/../Models/Psicologo.php';
+require_once __DIR__ . '/../Models/Cita.php';
+require_once __DIR__ . '/../Models/Pago.php';
+require_once __DIR__ . '/../Models/HorarioPsicologo.php';
+require_once __DIR__ . '/../Models/SolicitudCambio.php';
 
 class AdminController {
     private string $viewsPath;
@@ -164,43 +165,83 @@ class AdminController {
         }
         // AJAX slots para un psicólogo destino en fecha dada (para reasignar)
         if(isset($_GET['ajax']) && $_GET['ajax']==='slots'){
+            ob_clean(); // Limpiar cualquier salida previa
             header('Content-Type: application/json');
-            $idPs = (int)($_GET['ps'] ?? 0);
-            $fecha = $_GET['fecha'] ?? date('Y-m-d');
-            $interval = 30; // fijo
-            $resp = ['ps'=>$idPs,'fecha'=>$fecha,'slots'=>[]];
-            if(!$idPs || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$fecha)){ echo json_encode($resp); return; }
-            // Obtener bloques horario (similar a PsicologoController::slots)
-            require_once __DIR__ . '/../models/HorarioPsicologo.php';
-            $diaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
-            $dt = DateTime::createFromFormat('Y-m-d',$fecha);
-            if(!$dt){ echo json_encode($resp); return; }
-            $diaBD = $diaMap[$dt->format('D')] ?? 'lunes';
-            // Variantes sin acento para compatibilidad (miercoles, sabado)
-            $variants = [$diaBD];
-            if($diaBD==='miércoles') $variants[]='miercoles';
-            if($diaBD==='sábado') $variants[]='sabado';
-            $placeholders = implode(',', array_fill(0,count($variants),'?'));
-            $pdo = $citaModel->pdo();
-            $stH = $pdo->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana IN ($placeholders) ORDER BY hora_inicio");
-            $stH->execute(array_merge([$idPs],$variants));
-            $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
-            if(!$bloques){ echo json_encode($resp); return; }
-            $stC = $pdo->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
-            $stC->execute([$idPs,$fecha]);
-            $ocup = [];
-            foreach($stC->fetchAll(PDO::FETCH_ASSOC) as $r){ $ocup[substr($r['fecha_hora'],11,5)]=true; }
-            $slots=[]; $now=new DateTime(); $isToday=$fecha===$now->format('Y-m-d');
-            foreach($bloques as $b){
-                $ini = new DateTime($fecha.' '.$b['hora_inicio']);
-                $fin = new DateTime($fecha.' '.$b['hora_fin']);
-                while($ini < $fin){
-                    $h=$ini->format('H:i');
-                    if(!isset($ocup[$h]) && (!$isToday || $ini > $now)) $slots[]=$h;
-                    $ini->modify('+'.$interval.' minutes');
+            try {
+                $idPs = (int)($_GET['ps'] ?? 0);
+                $fecha = $_GET['fecha'] ?? date('Y-m-d');
+                $interval = 30; // fijo
+                $resp = ['ps'=>$idPs,'fecha'=>$fecha,'slots'=>[]];
+                
+                if(!$idPs || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$fecha)){ 
+                    echo json_encode($resp); 
+                    exit;
                 }
+                
+                // Obtener bloques horario (similar a PsicologoController::slots)
+                $diaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
+                $dt = DateTime::createFromFormat('Y-m-d',$fecha);
+                if(!$dt){ 
+                    echo json_encode($resp); 
+                    exit;
+                }
+                
+                $diaBD = $diaMap[$dt->format('D')] ?? 'lunes';
+                
+                // Variantes sin acento para compatibilidad (miercoles, sabado)
+                $variants = [$diaBD];
+                if($diaBD==='miércoles') $variants[]='miercoles';
+                if($diaBD==='sábado') $variants[]='sabado';
+                
+                $placeholders = implode(',', array_fill(0,count($variants),'?'));
+                $pdo = $citaModel->pdo();
+                
+                $stH = $pdo->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana IN ($placeholders) ORDER BY hora_inicio");
+                $stH->execute(array_merge([$idPs],$variants));
+                $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
+                
+                if(!$bloques){ 
+                    $resp['message'] = 'Sin horarios configurados para este psicólogo en '.$diaBD;
+                    echo json_encode($resp); 
+                    exit;
+                }
+                
+                $stC = $pdo->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
+                $stC->execute([$idPs,$fecha]);
+                $ocup = [];
+                foreach($stC->fetchAll(PDO::FETCH_ASSOC) as $r){ 
+                    $ocup[substr($r['fecha_hora'],11,5)]=true; 
+                }
+                
+                $slots=[]; 
+                $now=new DateTime(); 
+                $isToday=$fecha===$now->format('Y-m-d');
+                
+                foreach($bloques as $b){
+                    $ini = new DateTime($fecha.' '.$b['hora_inicio']);
+                    $fin = new DateTime($fecha.' '.$b['hora_fin']);
+                    while($ini < $fin){
+                        $h=$ini->format('H:i');
+                        if(!isset($ocup[$h]) && (!$isToday || $ini > $now)) {
+                            $slots[]=$h;
+                        }
+                        $ini->modify('+'.$interval.' minutes');
+                    }
+                }
+                
+                sort($slots); 
+                $resp['slots']=$slots; 
+                $resp['dia']=$diaBD;
+                $resp['bloques_count'] = count($bloques);
+                $resp['ocupadas_count'] = count($ocup);
+                
+                echo json_encode($resp);
+                exit;
+                
+            } catch(Exception $e) {
+                echo json_encode(['error'=>true,'message'=>$e->getMessage(),'slots'=>[]]);
+                exit;
             }
-            sort($slots); $resp['slots']=$slots; $resp['dia']=$diaBD; echo json_encode($resp); return;
         }
 
         if($_SERVER['REQUEST_METHOD']==='POST'){
@@ -301,6 +342,7 @@ class AdminController {
     /* ================== Horarios Psicólogos =================== */
     public function horarios(): void {
         $this->requireAdmin();
+        require_once __DIR__ . '/../Models/HorarioPsicologo.php';
         $psM = new Psicologo();
         $hM  = new HorarioPsicologo();
         $msg=''; $err='';
@@ -332,8 +374,8 @@ class AdminController {
         $this->requireAdmin();
 
         // Carga del modelo
-        $fileCambio = __DIR__ . '/../models/SolicitudCambio.php';
-        $fileAlias  = __DIR__ . '/../models/Solicitud.php';
+        $fileCambio = __DIR__ . '/../Models/SolicitudCambio.php';
+        $fileAlias  = __DIR__ . '/../Models/Solicitud.php';
         if(file_exists($fileCambio)) require_once $fileCambio;
         if(file_exists($fileAlias))  require_once $fileAlias; // por si ya existe
 

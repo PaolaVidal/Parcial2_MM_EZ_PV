@@ -181,14 +181,61 @@ function abrirReasignar(id,actual,fh){
   // cargar slots inmediatamente
   setTimeout(()=>{ cargarSlotsReasignar(); },60);
 }
-function cargarSlotsReasignar(){ const ps=document.getElementById('reasignarSelectPs').value; const fecha=document.getElementById('reasignarFecha').value; const cont=document.getElementById('reasignarSlots'); if(!ps||!fecha){ cont.innerHTML='<em class="text-muted">Seleccione psicólogo y fecha</em>'; return;} cont.innerHTML='<em>Cargando...</em>'; fetch(BASE+'index.php?url=admin/citas&ajax=slots&ps='+encodeURIComponent(ps)+'&fecha='+encodeURIComponent(fecha)).then(r=>r.json()).then(j=>{ if(!j.slots||!j.slots.length){ cont.innerHTML='<span class="text-danger small">Sin horas libres</span>'; return;} cont.innerHTML=j.slots.map(h=>`<button type='button' class='btn btn-sm btn-outline-primary m-1' onclick='selSlotReasignar("${h}")'>${h}</button>`).join(''); }).catch(()=>{ cont.innerHTML='<span class="text-danger small">Error</span>'; }); }
+function cargarSlotsReasignar(){ 
+  const ps=document.getElementById('reasignarSelectPs').value; 
+  const fecha=document.getElementById('reasignarFecha').value; 
+  const cont=document.getElementById('reasignarSlots'); 
+  if(!ps||!fecha){ 
+    cont.innerHTML='<em class="text-muted">Seleccione psicólogo y fecha</em>'; 
+    return;
+  } 
+  cont.innerHTML='<em>Cargando...</em>'; 
+  const url = BASE+'index.php?url=admin/citas&ajax=slots&ps='+encodeURIComponent(ps)+'&fecha='+encodeURIComponent(fecha);
+  console.log('Cargando slots desde:', url);
+  fetch(url)
+    .then(r=>{
+      console.log('Respuesta status:', r.status, 'Content-Type:', r.headers.get('Content-Type'));
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.text();
+    })
+    .then(txt=>{
+      console.log('Respuesta texto (primeros 200 chars):', txt.substring(0, 200));
+      
+      // Verificar que la respuesta sea JSON
+      if(!txt.trim().startsWith('{') && !txt.trim().startsWith('[')){
+        console.error('Respuesta NO es JSON, contenido completo:', txt);
+        throw new Error('Respuesta inválida del servidor (no JSON)');
+      }
+      
+      const j = JSON.parse(txt);
+      console.log('JSON parseado:', j);
+      
+      if(j.error){
+        cont.innerHTML='<span class="text-danger small">Error: '+j.message+'</span>';
+        return;
+      }
+      
+      if(j.message){
+        cont.innerHTML='<span class="text-warning small">'+j.message+'</span>';
+        return;
+      }
+      
+      if(!j.slots||!j.slots.length){ 
+        cont.innerHTML='<span class="text-warning small">Sin horas libres para '+j.dia+'</span>'; 
+        return;
+      } 
+      cont.innerHTML=j.slots.map(h=>`<button type='button' class='btn btn-sm btn-outline-primary m-1' onclick='selSlotReasignar("${h}")'>${h}</button>`).join(''); 
+    })
+    .catch(err=>{ 
+      console.error('Error completo:', err);
+      cont.innerHTML='<span class="text-danger small">Error: '+err.message+'</span>'; 
+    }); 
+}
 function selSlotReasignar(h){ document.getElementById('reasignarHora').value=h; [...document.querySelectorAll('#reasignarSlots button')].forEach(b=>b.classList.remove('active')); const btn=[...document.querySelectorAll('#reasignarSlots button')].find(b=>b.textContent===h); if(btn) btn.classList.add('active'); }
 function abrirCancelar(id){ document.getElementById('cancelarId').textContent='#'+id; document.getElementById('cancelarInputId').value=id; bootstrap.Modal.getOrCreateInstance(document.getElementById('cancelarModal')).show(); }
 function abrirReprogramar(id,fh){ document.getElementById('reprogramarId').textContent='#'+id; document.getElementById('reprogramarInputId').value=id; const loc=fh.replace(' ','T').substring(0,16); document.getElementById('reprogramarFecha').value=loc; bootstrap.Modal.getOrCreateInstance(document.getElementById('reprogramarModal')).show(); }
 function validarReprogramar(){ const v=document.getElementById('reprogramarFecha').value; if(!v) return false; const m=parseInt(v.split(':')[1]); if(m!==0 && m!==30){ alert('Minutos deben ser 00 o 30'); return false;} return confirm('Confirmar reprogramación?'); }
 function validarReasignar(){ const ps=document.getElementById('reasignarSelectPs').value; const fecha=document.getElementById('reasignarFecha').value; const hora=document.getElementById('reasignarHora').value; if(!ps||!fecha||!hora){ alert('Selecciona psicólogo, fecha y hora.'); return false;} document.getElementById('reasignarFechaHoraFinal').value=fecha+' '+hora+':00'; return confirm('Confirmar reasignación?'); }
 function confirmarCancelar(){ return confirm('Cancelar definitivamente?'); }
- document.addEventListener('DOMContentLoaded', renderTabla);
+document.addEventListener('DOMContentLoaded', renderTabla);
 </script>
-
-<?php require __DIR__.'/../layout/footer.php'; ?>
