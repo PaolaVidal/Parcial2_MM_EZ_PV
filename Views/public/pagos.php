@@ -90,7 +90,7 @@ ksort($estadosCount);
       <td><?= htmlspecialchars($p['descripcion']??'') ?></td>
       <td>
         <?php if(!empty($p['ticket'])): ?>
-          <a class="btn btn-sm btn-outline-primary" href="<?= RUTA ?>public/ticket?id=<?= $p['id'] ?>" target="_blank">Ver</a>
+          <a class="btn btn-sm btn-outline-primary" href="<?= RUTA ?>public/ticket?id=<?= $p['id'] ?>">Ver</a>
         <?php else: ?><span class="text-muted small">N/A</span><?php endif; ?>
       </td>
     </tr>

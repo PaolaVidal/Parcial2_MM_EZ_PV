@@ -16,6 +16,36 @@ Implementación básica MVC en PHP (sin frameworks) para gestionar Citas, Pagos 
 11. Sesión iniciada en `public/index.php`.
 12. Listo para adaptar diseño a imagen referencial.
 
+### Resumen Solución QR (Diagnóstico y Arreglo)
+
+1. Problemas detectados:
+	- Campo `qr_code` vacío provocaba violación de UNIQUE al crear múltiples citas.
+	- Librería `phpqrcode` faltaba (solo README en `vendor/phpqrcode`).
+	- Rutas inconsistentes: se intentaba acceder con prefijos `public/` y sin él, causando 404.
+	- Nombres de archivo terminaban como `cita_id_XX_png.png` por pasar ya el sufijo `.png` y volver a agregarse.
+	- Vista reconstruía el nombre del archivo en lugar de usar la ruta almacenada en BD.
+
+2. Cambios realizados:
+	- Implementado placeholder único (`PEND_<hex>`) para insertar la cita y luego actualizar el campo con la ruta final.
+	- `QRHelper` ahora busca la librería en `libs/phpqrcode/` y luego en `vendor/phpqrcode/` y crea directorio `public/qrcodes/` si falta.
+	- Generación de QR simplificada: contenido `CITA:<id>` y nombre forzado `cita_id_<id>.png` (sin duplicar `.png`).
+	- Vista usa directamente `qr_code` desde BD (sin reconstruir nombre) y muestra modal Bootstrap con fallback de ruta.
+	- Fallback JS: si `qrcodes/...` falla prueba `public/qrcodes/...`.
+	- Orden cronológico de citas aplicado para lectura consistente.
+
+3. Flujo final de creación de cita:
+	1. Validaciones (fecha futura, minutos 00/30, dentro de horario configurado, paciente válido, sin choque).
+	2. Inserción con `qr_code = PEND_<hex>`.
+	3. Generación de imagen QR (`qrcodes/cita_id_<id>.png`).
+	4. UPDATE del campo `qr_code` con la ruta relativa.
+
+4. Resultado:
+	- QR visible inmediatamente en modal y reutilizable para escaneo (contenido legible `CITA:<id>`).
+	- Eliminadas colisiones de clave única y nombres inconsistentes.
+	- Sistema preparado para regenerar en caso de necesitar reemplazar imágenes.
+
+5. Pendiente opcional (no implementado): Script de mantenimiento para regenerar QRs antiguos con nombre incorrecto si existieran.
+
 ## Instalación
 1. Crear BD ejecutando script SQL proporcionado.
 2. Copiar librería phpqrcode: descargar `qrlib.php` a `vendor/phpqrcode/`.

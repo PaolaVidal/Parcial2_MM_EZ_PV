@@ -32,12 +32,9 @@
       <div class="col-md-4">
         <label class="form-label">Fecha</label>
   <input type="date" id="fechaSel" class="form-control" value="<?= date('Y-m-d') ?>" min="<?= date('Y-m-d') ?>" onchange="validarFechaInput(); cargarSlots()" required>
-        <div class="d-flex align-items-center mt-2 gap-2">
-          <label class="form-label mb-0">Intervalo</label>
-          <select id="intervalo" class="form-select form-select-sm w-auto" onchange="cargarSlots()">
-            <option value="30">30 min</option>
-            <option value="60">60 min</option>
-          </select>
+        <div class="mt-2">
+          <span class="badge bg-secondary">Intervalo fijo: 30 min</span>
+          <input type="hidden" id="intervalo" value="30">
         </div>
         <div id="slots" class="mt-3 small">
           <em>Cargando slots...</em>
@@ -112,6 +109,15 @@
               <input type="hidden" name="id_cita" value="<?= (int)$c['id'] ?>">
               <button class="btn btn-sm btn-success">Pagar</button>
             </form>
+          <?php else: ?>
+            <?php 
+              $ticketM = new TicketPago();
+              $ticket = $ticketM->obtenerPorPago($p['id']);
+              if($ticket){
+                $rutaTicket = RUTA . 'ticket/ver/'.$ticket['id'];
+                echo '<a class="btn btn-sm btn-outline-primary" href="'.$rutaTicket.'">Ticket</a>';
+              }
+            ?>
           <?php endif; ?>
         </td>
       </tr>
@@ -131,7 +137,7 @@ function filtrarPacientes(){
 }
 function cargarSlots(){
   const fecha = document.getElementById('fechaSel').value;
-  const interval = document.getElementById('intervalo').value;
+  const interval = 30; // fijo
   const cont = document.getElementById('slots');
   cont.innerHTML = '<em>Cargando...</em>';
   const urlPrimary = BASE + 'index.php?url=psicologo/slots&fecha='+encodeURIComponent(fecha)+'&interval='+interval;

@@ -4,6 +4,14 @@ require_once __DIR__ . '/BaseModel.php';
 
 class TicketPago extends BaseModel {
 
+    /** Obtener ticket por ID */
+    public function obtener(int $id): ?array {
+        $st = $this->db->prepare("SELECT * FROM Ticket_Pago WHERE id=? LIMIT 1");
+        $st->execute([$id]);
+        $r = $st->fetch();
+        return $r ?: null;
+    }
+
     public function obtenerPorPago(int $idPago): ?array {
         $st = $this->db->prepare("SELECT * FROM Ticket_Pago WHERE id_pago=? LIMIT 1");
         $st->execute([$idPago]);
@@ -22,5 +30,20 @@ class TicketPago extends BaseModel {
             $data['qr_code']
         ]);
         return (int)$this->db->lastInsertId();
+    }
+
+    /** Listar tickets asociados a un psicólogo (join Pago->Cita->Paciente) */
+    public function listarPorPsicologo(int $idPsicologo): array {
+        $sql = "SELECT t.*, p.monto_total, p.estado_pago, c.fecha_hora, c.id as id_cita,
+                       pac.id as id_paciente, COALESCE(pac.nombre, CONCAT('Paciente #', pac.id)) nombre_paciente
+                FROM Ticket_Pago t
+                JOIN Pago p ON p.id = t.id_pago
+                JOIN Cita c ON c.id = p.id_cita
+                LEFT JOIN Paciente pac ON pac.id = c.id_paciente
+                WHERE c.id_psicologo = ? AND t.estado='activo'
+                ORDER BY t.fecha_emision DESC";
+        $st = $this->db->prepare($sql);
+        $st->execute([$idPsicologo]);
+        return $st->fetchAll();
     }
 }

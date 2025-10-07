@@ -158,26 +158,71 @@ class PsicologoController {
 
     public function scanProcesar(): void {
         $this->requirePsicologo();
-        $raw = trim($_POST['token'] ?? '');
+        $rawInput = trim($_POST['token'] ?? '');
         $idPsico = (int)$_SESSION['usuario']['id'];
         $citaM = new Cita();
-        // Aceptar formatos: ID (numérico) o CITA:ID
-        if(stripos($raw,'CITA:')===0){ $raw = substr($raw,5); }
-        if(!ctype_digit($raw)){
-            $res=['ok'=>false,'msg'=>'Formato inválido. Use ID o CITA:ID'];
+        // Nueva política: solo aceptar formato QR oficial CITA:<id>
+        if(stripos($rawInput,'CITA:')!==0){
+            $res=['ok'=>false,'msg'=>'Formato inválido. Escanee un QR válido (CITA:<id>).'];
         } else {
-            $id = (int)$raw;
-            $cita = $citaM->obtener($id);
-            if(!$cita){ $res=['ok'=>false,'msg'=>'ID no encontrado']; }
-            elseif((int)$cita['id_psicologo']!==$idPsico){ $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; }
-            else {
-                if($cita['estado_cita']==='pendiente') $citaM->marcarRealizada($id);
-                $cita['estado_cita']='realizada';
-                $res=['ok'=>true,'msg'=>'Cita confirmada','cita'=>$cita];
+            $num = substr($rawInput,5);
+            if(!ctype_digit($num)){
+                $res=['ok'=>false,'msg'=>'ID inválido en el QR'];
+            } else {
+                $id = (int)$num;
+                $cita = $citaM->obtener($id);
+                if(!$cita){ $res=['ok'=>false,'msg'=>'Cita no encontrada']; }
+                elseif((int)$cita['id_psicologo']!==$idPsico){ $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; }
+                else {
+                    if($cita['estado_cita']==='pendiente') $citaM->marcarRealizada($id);
+                    $cita['estado_cita']='realizada';
+                    $res=['ok'=>true,'msg'=>'Cita confirmada','cita'=>$cita];
+                }
             }
         }
         header('Content-Type: application/json');
         echo json_encode($res);
+    }
+
+    // Nuevo: solo consulta (no confirma)
+    public function scanConsultar(): void {
+        $this->requirePsicologo();
+        $rawInput = trim($_POST['token'] ?? '');
+        $idPsico = (int)$_SESSION['usuario']['id'];
+        $citaM = new Cita();
+        if(stripos($rawInput,'CITA:')!==0){
+            $res=['ok'=>false,'msg'=>'Formato inválido. Use CITA:<id>'];
+        } else {
+            $num = substr($rawInput,5);
+            if(!ctype_digit($num)){
+                $res=['ok'=>false,'msg'=>'ID inválido'];
+            } else {
+                $id = (int)$num;
+                $cita = $citaM->obtener($id);
+                if(!$cita){ $res=['ok'=>false,'msg'=>'Cita no encontrada']; }
+                elseif((int)$cita['id_psicologo']!==$idPsico){ $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; }
+                else { $res=['ok'=>true,'cita'=>$cita]; }
+            }
+        }
+        header('Content-Type: application/json'); echo json_encode($res);
+    }
+
+    // Nuevo: confirmar asistencia explícita
+    public function scanConfirmar(): void {
+        $this->requirePsicologo();
+        $idPsico = (int)$_SESSION['usuario']['id'];
+        $id = (int)($_POST['id'] ?? 0);
+        $citaM = new Cita();
+        $cita = $citaM->obtener($id);
+        if(!$id || !$cita){ $res=['ok'=>false,'msg'=>'Cita no encontrada']; }
+        elseif((int)$cita['id_psicologo']!==$idPsico){ $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; }
+        elseif($cita['estado_cita']==='realizada'){ $res=['ok'=>true,'msg'=>'Ya estaba realizada','cita'=>$cita]; }
+        else {
+            $citaM->marcarRealizada($id);
+            $cita['estado_cita']='realizada';
+            $res=['ok'=>true,'msg'=>'Cita confirmada','cita'=>$cita];
+        }
+        header('Content-Type: application/json'); echo json_encode($res);
     }
 
     /** Devuelve slots disponibles (intervalo 30 o 60) para una fecha dada */

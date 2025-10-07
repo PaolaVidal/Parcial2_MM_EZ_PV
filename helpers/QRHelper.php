@@ -38,8 +38,9 @@ class QRHelper {
             $nombre = $nombreArchivoPrefix . '_' . time() . '_' . rand(100,999) . '.png';
         }
 
-        $rutaFisica = $dir . $nombre;           // Ruta en disco
-        $rutaPublica = 'qrcodes/' . $nombre;    // Ruta relativa accesible desde el navegador
+    $rutaFisica = $dir . $nombre;           // Ruta en disco
+    // Usar prefijo public/ para coincidir con ubicación física y facilitar acceso directo
+    $rutaPublica = 'public/qrcodes/' . $nombre;    // Ruta relativa accesible desde el navegador
 
         // Generar QR (nivel de corrección L, tamaño 4)
         QRcode::png($texto, $rutaFisica, QR_ECLEVEL_L, 4);
