@@ -24,13 +24,15 @@
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Admin</a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="<?= url('admin','dashboard') ?>">Dashboard</a></li>
-                <li><a class="dropdown-item" href="<?= url('admin','usuarios') ?>">Usuarios</a></li>
-                <li><a class="dropdown-item" href="<?= url('admin','pacientes') ?>">Pacientes</a></li>
-                <li><a class="dropdown-item" href="<?= url('admin','psicologos') ?>">Psicólogos</a></li>
-                <li><a class="dropdown-item" href="<?= url('admin','citas') ?>">Citas</a></li>
-                <li><a class="dropdown-item" href="<?= url('admin','pagos') ?>">Pagos</a></li>
-                <li><a class="dropdown-item" href="<?= url('admin','solicitudes') ?>">Solicitudes</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','dashboard') ?>"><i class="fas fa-home me-2"></i>Dashboard</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','estadisticas') ?>"><i class="fas fa-chart-bar me-2"></i>Estadísticas</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="<?= url('admin','usuarios') ?>"><i class="fas fa-users me-2"></i>Usuarios</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','pacientes') ?>"><i class="fas fa-user-injured me-2"></i>Pacientes</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','psicologos') ?>"><i class="fas fa-user-md me-2"></i>Psicólogos</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','citas') ?>"><i class="fas fa-calendar me-2"></i>Citas</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','pagos') ?>"><i class="fas fa-dollar-sign me-2"></i>Pagos</a></li>
+                <li><a class="dropdown-item" href="<?= url('admin','solicitudes') ?>"><i class="fas fa-inbox me-2"></i>Solicitudes</a></li>
               </ul>
             </li>
           <?php elseif($_SESSION['usuario']['rol']==='psicologo'): ?>

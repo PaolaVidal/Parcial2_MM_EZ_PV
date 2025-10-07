@@ -28,9 +28,83 @@ class AdminController {
 
     public function dashboard(): void {
         $this->requireAdmin();
-        $usuariosCounts = (new Usuario())->conteoActivosInactivos();
-        $citaStats = (new Cita())->estadisticasEstado();
-        $this->render('dashboard',[ 'usuariosCounts'=>$usuariosCounts, 'citaStats'=>$citaStats ]);
+        $usuarioModel = new Usuario();
+        $pacienteModel = new Paciente();
+        $citaModel = new Cita();
+        $pagoModel = new Pago();
+        
+        // Contadores básicos
+        $usuariosCounts = $usuarioModel->conteoActivosInactivos();
+        $citaStats = $citaModel->estadisticasEstado();
+        
+        // Datos adicionales para el dashboard mejorado
+        $totalPacientes = count($pacienteModel->listarTodos());
+        $pacientesActivos = count(array_filter($pacienteModel->listarTodos(), fn($p) => ($p['estado'] ?? 'activo') === 'activo'));
+        
+        // Citas del mes actual
+        $inicioMes = date('Y-m-01');
+        $finMes = date('Y-m-t');
+        $todasCitas = method_exists($citaModel, 'citasPorRango') ? $citaModel->citasPorRango($inicioMes, $finMes) : [];
+        $citasMes = count($todasCitas);
+        $citasPendientes = count(array_filter($todasCitas, fn($c) => $c['estado_cita'] === 'pendiente'));
+        
+        // Ingresos del mes
+        $ingresosMesData = $pagoModel->ingresosPorMes((int)date('Y'));
+        $mesActual = (int)date('m');
+        $ingresosMes = 0;
+        foreach($ingresosMesData as $im) {
+            if((int)substr($im['mes'], 0, 2) === $mesActual) {
+                $ingresosMes = $im['total'];
+                break;
+            }
+        }
+        
+        // Pagos completados
+        $todosPagos = method_exists($pagoModel, 'listarTodos') ? $pagoModel->listarTodos() : [];
+        $pagosPagados = count(array_filter($todosPagos, fn($p) => ($p['estado_pago'] ?? '') === 'pagado'));
+        
+        // Citas próximas (con JOIN a paciente y psicologo)
+        $pdo = $citaModel->pdo();
+        $stProx = $pdo->query("
+            SELECT c.*, 
+                   pac.nombre as paciente_nombre,
+                   u.nombre as psicologo_nombre
+            FROM Cita c
+            LEFT JOIN Paciente pac ON c.id_paciente = pac.id
+            LEFT JOIN Psicologo ps ON c.id_psicologo = ps.id
+            LEFT JOIN Usuario u ON ps.id_usuario = u.id
+            WHERE c.fecha_hora >= NOW() 
+              AND c.estado_cita = 'pendiente'
+            ORDER BY c.fecha_hora ASC
+            LIMIT 5
+        ");
+        $proximasCitas = $stProx->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Pagos pendientes (con JOIN a paciente)
+        $stPagos = $pdo->query("
+            SELECT p.*, 
+                   pac.nombre as paciente_nombre
+            FROM Pago p
+            LEFT JOIN Cita c ON p.id_cita = c.id
+            LEFT JOIN Paciente pac ON c.id_paciente = pac.id
+            WHERE p.estado_pago = 'pendiente'
+            ORDER BY p.fecha DESC
+            LIMIT 5
+        ");
+        $pagosPendientesLista = $stPagos->fetchAll(PDO::FETCH_ASSOC);
+        
+        $this->render('dashboard', [
+            'usuariosCounts' => $usuariosCounts,
+            'citaStats' => $citaStats,
+            'totalPacientes' => $totalPacientes,
+            'pacientesActivos' => $pacientesActivos,
+            'citasMes' => $citasMes,
+            'citasPendientes' => $citasPendientes,
+            'ingresosMes' => $ingresosMes,
+            'pagosPagados' => $pagosPagados,
+            'proximasCitas' => $proximasCitas,
+            'pagosPendientesLista' => $pagosPendientesLista
+        ]);
     }
 
     /* ================= Usuarios ================= */
@@ -417,6 +491,302 @@ class AdminController {
         $this->render('solicitudes',[ 'pendientes'=>$pendientes ]);
     }
 
+    /* ================== Estadísticas =================== */
+    public function estadisticas(): void {
+        $this->requireAdmin();
+        
+        // Filtros
+        $anio = (int)($_GET['anio'] ?? date('Y'));
+        $mes = $_GET['mes'] ?? '';
+        $psicologoFiltro = (int)($_GET['psicologo'] ?? 0);
+        
+        // Exportación
+        if(isset($_GET['export'])) {
+            $this->exportarEstadisticas($_GET['export'], $anio, $mes, $psicologoFiltro);
+            return;
+        }
+        
+        // Modelos
+        $citaModel = new Cita();
+        $pagoModel = new Pago();
+        $psicologoModel = new Psicologo();
+        $pacienteModel = new Paciente();
+        require_once __DIR__ . '/../Models/HorarioPsicologo.php';
+        $horarioModel = new HorarioPsicologo();
+        
+        $pdo = $citaModel->pdo();
+        
+        // Construcción de WHERE para filtros
+        $where = ["YEAR(c.fecha_hora) = ?"];
+        $params = [$anio];
+        
+        if($mes) {
+            $where[] = "MONTH(c.fecha_hora) = ?";
+            $params[] = (int)$mes;
+        }
+        if($psicologoFiltro) {
+            $where[] = "c.id_psicologo = ?";
+            $params[] = $psicologoFiltro;
+        }
+        
+        $whereSQL = implode(' AND ', $where);
+        
+        // Estadísticas generales
+        $stats = [
+            'total_citas' => 0,
+            'citas_realizadas' => 0,
+            'citas_pendientes' => 0,
+            'ingresos_totales' => 0
+        ];
+        
+        $stStats = $pdo->prepare("
+            SELECT 
+                COUNT(c.id) as total,
+                SUM(CASE WHEN c.estado_cita = 'realizada' THEN 1 ELSE 0 END) as realizadas,
+                SUM(CASE WHEN c.estado_cita = 'pendiente' THEN 1 ELSE 0 END) as pendientes
+            FROM Cita c
+            WHERE $whereSQL
+        ");
+        $stStats->execute($params);
+        $r = $stStats->fetch(PDO::FETCH_ASSOC);
+        $stats['total_citas'] = $r['total'] ?? 0;
+        $stats['citas_realizadas'] = $r['realizadas'] ?? 0;
+        $stats['citas_pendientes'] = $r['pendientes'] ?? 0;
+        
+        // Ingresos totales
+        $stIngresos = $pdo->prepare("
+            SELECT COALESCE(SUM(p.monto_total), 0) as total
+            FROM Pago p
+            JOIN Cita c ON p.id_cita = c.id
+            WHERE $whereSQL AND p.estado_pago = 'pagado'
+        ");
+        $stIngresos->execute($params);
+        $stats['ingresos_totales'] = $stIngresos->fetchColumn();
+        
+        // Citas por mes
+        $stCitasMes = $pdo->prepare("
+            SELECT DATE_FORMAT(c.fecha_hora, '%m-%Y') as mes, COUNT(*) as total
+            FROM Cita c
+            WHERE YEAR(c.fecha_hora) = ?
+            " . ($psicologoFiltro ? "AND c.id_psicologo = ?" : "") . "
+            GROUP BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+            ORDER BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+        ");
+        $paramsMes = [$anio];
+        if($psicologoFiltro) $paramsMes[] = $psicologoFiltro;
+        $stCitasMes->execute($paramsMes);
+        $citasPorMes = $stCitasMes->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Citas por estado
+        $stEstado = $pdo->prepare("
+            SELECT estado_cita as estado, COUNT(*) as total
+            FROM Cita c
+            WHERE $whereSQL
+            GROUP BY estado_cita
+        ");
+        $stEstado->execute($params);
+        $citasPorEstado = $stEstado->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Ingresos por mes
+        $stIngresosMes = $pdo->prepare("
+            SELECT DATE_FORMAT(c.fecha_hora, '%m-%Y') as mes, COALESCE(SUM(p.monto_total), 0) as total
+            FROM Pago p
+            JOIN Cita c ON p.id_cita = c.id
+            WHERE YEAR(c.fecha_hora) = ?
+            " . ($psicologoFiltro ? "AND c.id_psicologo = ?" : "") . "
+              AND p.estado_pago = 'pagado'
+            GROUP BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+            ORDER BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+        ");
+        $stIngresosMes->execute($paramsMes);
+        $ingresosPorMes = $stIngresosMes->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Top 10 Psicólogos
+        $stTopPs = $pdo->prepare("
+            SELECT 
+                ps.id,
+                u.nombre,
+                ps.especialidad,
+                COUNT(c.id) as total_citas,
+                COALESCE(SUM(p.monto_total), 0) as ingresos
+            FROM Psicologo ps
+            JOIN Usuario u ON ps.id_usuario = u.id
+            LEFT JOIN Cita c ON ps.id = c.id_psicologo AND $whereSQL
+            LEFT JOIN Pago p ON c.id = p.id_cita AND p.estado_pago = 'pagado'
+            GROUP BY ps.id, u.nombre, ps.especialidad
+            ORDER BY total_citas DESC
+            LIMIT 10
+        ");
+        $stTopPs->execute($params);
+        $topPsicologos = $stTopPs->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Top 10 Pacientes
+        $stTopPac = $pdo->prepare("
+            SELECT 
+                pac.id,
+                pac.nombre,
+                COUNT(c.id) as total_citas,
+                COALESCE(SUM(p.monto_total), 0) as total_pagado
+            FROM Paciente pac
+            LEFT JOIN Cita c ON pac.id = c.id_paciente AND $whereSQL
+            LEFT JOIN Pago p ON c.id = p.id_cita AND p.estado_pago = 'pagado'
+            GROUP BY pac.id, pac.nombre
+            ORDER BY total_citas DESC
+            LIMIT 10
+        ");
+        $stTopPac->execute($params);
+        $topPacientes = $stTopPac->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Horarios completos por psicólogo
+        $psicologos = $psicologoModel->listarTodos();
+        $horariosCompletos = [];
+        foreach($psicologos as $ps) {
+            $horarios = $horarioModel->listarPorPsicologo($ps['id']);
+            $horariosPorDia = [];
+            foreach($horarios as $h) {
+                $dia = $h['dia_semana'];
+                if(!isset($horariosPorDia[$dia])) $horariosPorDia[$dia] = [];
+                $horariosPorDia[$dia][] = $h;
+            }
+            $horariosCompletos[] = [
+                'id' => $ps['id'],
+                'nombre' => $ps['nombre'],
+                'horarios' => $horariosPorDia
+            ];
+        }
+        
+        // Lista de psicólogos para el filtro
+        $psicologosLista = $psicologoModel->listarActivos();
+        
+        $this->render('estadisticas', [
+            'anio' => $anio,
+            'mes' => $mes,
+            'psicologo' => $psicologoFiltro,
+            'stats' => $stats,
+            'citasPorMes' => $citasPorMes,
+            'citasPorEstado' => $citasPorEstado,
+            'ingresosPorMes' => $ingresosPorMes,
+            'topPsicologos' => $topPsicologos,
+            'topPacientes' => $topPacientes,
+            'horariosCompletos' => $horariosCompletos,
+            'psicologos' => $psicologosLista
+        ]);
+    }
+    
+    private function exportarEstadisticas(string $formato, int $anio, string $mes, int $psicologoFiltro): void {
+        require_once __DIR__ . '/../helpers/PDFHelper.php';
+        require_once __DIR__ . '/../helpers/ExcelHelper.php';
+        
+        // Obtener los mismos datos que la vista
+        $citaModel = new Cita();
+        $pdo = $citaModel->pdo();
+        
+        $where = ["YEAR(c.fecha_hora) = ?"];
+        $params = [$anio];
+        if($mes) {
+            $where[] = "MONTH(c.fecha_hora) = ?";
+            $params[] = (int)$mes;
+        }
+        if($psicologoFiltro) {
+            $where[] = "c.id_psicologo = ?";
+            $params[] = $psicologoFiltro;
+        }
+        $whereSQL = implode(' AND ', $where);
+        
+        // Obtener datos
+        $stCitas = $pdo->prepare("
+            SELECT 
+                c.id,
+                c.fecha_hora,
+                pac.nombre as paciente,
+                u.nombre as psicologo,
+                ps.especialidad,
+                c.estado_cita as estado,
+                COALESCE(p.monto_total, 0) as monto
+            FROM Cita c
+            LEFT JOIN Paciente pac ON c.id_paciente = pac.id
+            LEFT JOIN Psicologo ps ON c.id_psicologo = ps.id
+            LEFT JOIN Usuario u ON ps.id_usuario = u.id
+            LEFT JOIN Pago p ON c.id = p.id_cita
+            WHERE $whereSQL
+            ORDER BY c.fecha_hora DESC
+        ");
+        $stCitas->execute($params);
+        $citas = $stCitas->fetchAll(PDO::FETCH_ASSOC);
+        
+        if($formato === 'pdf') {
+            // Generar HTML para el PDF
+            $html = '<!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <style>
+                    body { font-family: Arial, sans-serif; font-size: 10px; }
+                    h1 { text-align: center; color: #2C3E50; font-size: 18px; }
+                    h2 { color: #3498DB; font-size: 14px; margin-top: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                    th { background: #3498DB; color: white; padding: 8px; text-align: left; }
+                    td { padding: 6px; border-bottom: 1px solid #ddd; }
+                    tr:nth-child(even) { background: #f9f9f9; }
+                    .stats { margin: 20px 0; }
+                    .stat-box { display: inline-block; margin: 10px; padding: 10px; background: #ecf0f1; }
+                </style>
+            </head>
+            <body>
+                <h1>Estadísticas del Sistema - ' . $anio . ($mes ? '/' . $mes : '') . '</h1>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Fecha</th>
+                            <th>Paciente</th>
+                            <th>Psicólogo</th>
+                            <th>Especialidad</th>
+                            <th>Estado</th>
+                            <th>Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>';
+            
+            foreach($citas as $c) {
+                $html .= '<tr>
+                    <td>' . $c['id'] . '</td>
+                    <td>' . date('d/m/Y H:i', strtotime($c['fecha_hora'])) . '</td>
+                    <td>' . htmlspecialchars($c['paciente']) . '</td>
+                    <td>' . htmlspecialchars($c['psicologo']) . '</td>
+                    <td>' . htmlspecialchars($c['especialidad']) . '</td>
+                    <td>' . $c['estado'] . '</td>
+                    <td>$' . number_format($c['monto'], 2) . '</td>
+                </tr>';
+            }
+            
+            $html .= '</tbody></table></body></html>';
+            
+            PDFHelper::generarPDF($html, 'estadisticas_' . $anio . ($mes ? '_' . $mes : ''), 'landscape', 'letter', true);
+            
+        } else if($formato === 'excel') {
+            // Preparar datos para Excel
+            $dataCitas = [['ID', 'Fecha', 'Paciente', 'Psicólogo', 'Especialidad', 'Estado', 'Monto']];
+            foreach($citas as $c) {
+                $dataCitas[] = [
+                    $c['id'],
+                    date('d/m/Y H:i', strtotime($c['fecha_hora'])),
+                    $c['paciente'],
+                    $c['psicologo'],
+                    $c['especialidad'],
+                    $c['estado'],
+                    '$' . number_format($c['monto'], 2)
+                ];
+            }
+            
+            $hojas = [
+                ['titulo' => 'Citas ' . $anio, 'data' => $dataCitas]
+            ];
+            
+            ExcelHelper::exportarMultiplesHojas($hojas, 'estadisticas_admin_' . $anio);
+        }
+    }
+    
     /* ============ Endpoints JSON para Charts ============ */
     public function jsonUsuariosActivos(): void { $this->requireAdmin(); header('Content-Type: application/json'); echo json_encode((new Usuario())->conteoActivosInactivos()); }
     public function jsonCitasEstados(): void { $this->requireAdmin(); header('Content-Type: application/json'); echo json_encode((new Cita())->estadisticasEstado()); }
