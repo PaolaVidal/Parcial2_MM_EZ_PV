@@ -8,7 +8,7 @@ class Psicologo extends BaseModel {
     private string $tUsuario;
     private string $tCita;
     private string $colIdUsuario = 'id_usuario';
-    private ?string $colEspecialidad = 'especialidad';
+    private ?string $colEspecialidad = 'id_especialidad';
     private ?string $colExperiencia = null;
     private ?string $colHorario = null;
 
@@ -42,7 +42,7 @@ class Psicologo extends BaseModel {
         $st = $this->db->query("DESCRIBE {$this->tPsicologo}");
         $cols = $st->fetchAll(PDO::FETCH_COLUMN);
         $this->colIdUsuario = $this->matchCol($cols,['id_usuario','idUsuario','usuario_id']) ?? $this->colIdUsuario;
-        $this->colEspecialidad = $this->matchCol($cols,['especialidad','Especialidad']);
+        $this->colEspecialidad = $this->matchCol($cols,['id_especialidad','especialidad','Especialidad']);
         $this->colExperiencia  = $this->matchCol($cols,['experiencia','Experiencia','exp']);
         $this->colHorario      = $this->matchCol($cols,['horario','Horario','agenda']);
     }
@@ -93,7 +93,7 @@ class Psicologo extends BaseModel {
         if($this->colEspecialidad){
             $columns[] = $this->colEspecialidad;
             $place[]   = ':especialidad';
-            $params[':especialidad'] = $data['especialidad'] ?? null;
+            $params[':especialidad'] = $data['id_especialidad'] ?? $data['especialidad'] ?? null;
         }
         if($this->colExperiencia){
             $columns[] = $this->colExperiencia;
@@ -120,7 +120,7 @@ class Psicologo extends BaseModel {
         $params = [':id'=>$id];
         if($this->colEspecialidad){
             $sets[] = "{$this->colEspecialidad} = :especialidad";
-            $params[':especialidad'] = $data['especialidad'] ?? '';
+            $params[':especialidad'] = $data['id_especialidad'] ?? $data['especialidad'] ?? '';
         }
         if($this->colExperiencia){
             $sets[] = "{$this->colExperiencia} = :experiencia";
@@ -153,9 +153,10 @@ class Psicologo extends BaseModel {
     }
 
     public function listarTodos(): array {
-        $sql = "SELECT p.*, u.nombre, u.email, u.estado
+        $sql = "SELECT p.*, u.nombre, u.email, u.estado, e.nombre as nombre_especialidad
                 FROM {$this->tPsicologo} p
                 JOIN {$this->tUsuario} u ON u.id = p.id_usuario
+                LEFT JOIN Especialidad e ON e.id = p.id_especialidad
                 WHERE u.rol='psicologo'
                 ORDER BY u.nombre";
         return $this->q($sql)->fetchAll(PDO::FETCH_ASSOC);

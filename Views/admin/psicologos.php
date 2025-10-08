@@ -7,7 +7,14 @@
   <div class="col-md-2"><input name="nombre" class="form-control form-control-sm" placeholder="Nombre" required></div>
   <div class="col-md-2"><input name="email" type="email" class="form-control form-control-sm" placeholder="Email" required></div>
   <div class="col-md-2"><input name="password" type="text" class="form-control form-control-sm" placeholder="Password" required></div>
-  <div class="col-md-2"><input name="especialidad" class="form-control form-control-sm" placeholder="Especialidad"></div>
+  <div class="col-md-2">
+    <select name="id_especialidad" class="form-select form-select-sm" required>
+      <option value="">Especialidad</option>
+      <?php foreach($especialidades as $esp): ?>
+        <option value="<?= (int)$esp['id'] ?>"><?= htmlspecialchars($esp['nombre']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </div>
   <div class="col-md-2"><input name="experiencia" class="form-control form-control-sm" placeholder="Experiencia"></div>
   <div class="col-12 mt-2"><button class="btn btn-sm btn-primary">Crear</button></div>
 </form>
@@ -29,7 +36,16 @@
         <td><?= $p['id'] ?></td>
         <td><input name="nombre" value="<?= htmlspecialchars($p['nombre']??'') ?>" class="form-control form-control-sm"></td>
         <td><input name="email" value="<?= htmlspecialchars($p['email']??'') ?>" class="form-control form-control-sm"></td>
-        <td><input name="especialidad" value="<?= htmlspecialchars($p['especialidad']??'') ?>" class="form-control form-control-sm"></td>
+        <td>
+          <select name="id_especialidad" class="form-select form-select-sm" required>
+            <option value="">Seleccionar</option>
+            <?php foreach($especialidades as $esp): ?>
+              <option value="<?= (int)$esp['id'] ?>" <?= (int)$p['id_especialidad']===(int)$esp['id']?'selected':'' ?>>
+                <?= htmlspecialchars($esp['nombre']) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </td>
         <td><input name="experiencia" value="<?= htmlspecialchars($p['experiencia']??'') ?>" class="form-control form-control-sm"></td>
         <td>
           <button name="accion" value="estado" class="btn btn-sm <?= $btnEstadoCls ?>" onclick="this.form.estado.value='<?= $nuevoEstado ?>';">

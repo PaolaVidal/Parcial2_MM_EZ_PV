@@ -137,10 +137,18 @@ class AdminController {
         $this->requireAdmin();
         $psModel  = new Psicologo();
         $usrModel = new Usuario();
+        require_once __DIR__ . '/../Models/Especialidad.php';
+        $espModel = new Especialidad();
+        
         if($_SERVER['REQUEST_METHOD']==='POST'){
             $accion = $_POST['accion'] ?? '';
             try {
                 if($accion==='crear'){
+                    $idEspecialidad = (int)($_POST['id_especialidad'] ?? 0);
+                    if(!$idEspecialidad){
+                        throw new Exception('Debe seleccionar una especialidad');
+                    }
+                    
                     $idU = $usrModel->crear([
                         'nombre'=>trim($_POST['nombre']),
                         'email'=>trim($_POST['email']),
@@ -148,13 +156,19 @@ class AdminController {
                         'rol'=>'psicologo'
                     ]);
                     $psModel->crear($idU,[
-                        'especialidad'=>trim($_POST['especialidad']??''),
+                        'id_especialidad'=>$idEspecialidad,
                         'experiencia'=>trim($_POST['experiencia']??''),
                         'horario'=>trim($_POST['horario']??'')
                     ]);
                 } elseif($accion==='editar'){
                     $idPs = (int)$_POST['id'];
                     $idU  = (int)$_POST['id_usuario'];
+                    $idEspecialidad = (int)($_POST['id_especialidad'] ?? 0);
+                    
+                    if(!$idEspecialidad){
+                        throw new Exception('Debe seleccionar una especialidad');
+                    }
+                    
                     $usrModel->actualizar($idU,[
                         'nombre'=>trim($_POST['nombre']),
                         'email'=>trim($_POST['email'])
@@ -163,7 +177,7 @@ class AdminController {
                         $usrModel->actualizarPassword($idU,$np);
                     }
                     $psModel->actualizar($idPs,[
-                        'especialidad'=>trim($_POST['especialidad']??''),
+                        'id_especialidad'=>$idEspecialidad,
                         'experiencia'=>trim($_POST['experiencia']??''),
                         'horario'=>trim($_POST['horario']??'')
                     ]);
@@ -176,9 +190,11 @@ class AdminController {
             header('Location: '.url('admin','psicologos')); exit;
         }
         $psicologos = $psModel->listarTodos();
+        $especialidades = $espModel->listarActivas();
         $masSolic = method_exists($psModel,'masSolicitados')?$psModel->masSolicitados():[];
         $this->render('psicologos',[
             'psicologos'=>$psicologos,
+            'especialidades'=>$especialidades,
             'masSolic'=>$masSolic,
             'error'=>$_SESSION['flash_error']??''
         ]);
@@ -658,14 +674,15 @@ class AdminController {
             SELECT 
                 ps.id,
                 u.nombre,
-                ps.especialidad,
+                e.nombre as especialidad,
                 COUNT(c.id) as total_citas,
                 COALESCE(SUM(p.monto_total), 0) as ingresos
             FROM Psicologo ps
             JOIN Usuario u ON ps.id_usuario = u.id
+            LEFT JOIN Especialidad e ON ps.id_especialidad = e.id
             LEFT JOIN Cita c ON ps.id = c.id_psicologo AND $whereSQL
             LEFT JOIN Pago p ON c.id = p.id_cita AND p.estado_pago = 'pagado'
-            GROUP BY ps.id, u.nombre, ps.especialidad
+            GROUP BY ps.id, u.nombre, e.nombre
             ORDER BY total_citas DESC
             LIMIT 10
         ");
@@ -752,13 +769,14 @@ class AdminController {
                 c.fecha_hora,
                 pac.nombre as paciente,
                 u.nombre as psicologo,
-                ps.especialidad,
+                e.nombre as especialidad,
                 c.estado_cita as estado,
                 COALESCE(p.monto_total, 0) as monto
             FROM Cita c
             LEFT JOIN Paciente pac ON c.id_paciente = pac.id
             LEFT JOIN Psicologo ps ON c.id_psicologo = ps.id
             LEFT JOIN Usuario u ON ps.id_usuario = u.id
+            LEFT JOIN Especialidad e ON ps.id_especialidad = e.id
             LEFT JOIN Pago p ON c.id = p.id_cita
             WHERE $whereSQL
             ORDER BY c.fecha_hora DESC
@@ -889,14 +907,15 @@ class AdminController {
             $stTopPs = $pdo->prepare("
                 SELECT 
                     u.nombre,
-                    ps.especialidad,
+                    e.nombre as especialidad,
                     COUNT(c.id) as total_citas,
                     COALESCE(SUM(p.monto_total), 0) as ingresos
                 FROM Psicologo ps
                 JOIN Usuario u ON ps.id_usuario = u.id
+                LEFT JOIN Especialidad e ON ps.id_especialidad = e.id
                 LEFT JOIN Cita c ON ps.id = c.id_psicologo AND $whereSQL
                 LEFT JOIN Pago p ON c.id = p.id_cita AND p.estado_pago = 'pagado'
-                GROUP BY ps.id, u.nombre, ps.especialidad
+                GROUP BY ps.id, u.nombre, e.nombre
                 ORDER BY total_citas DESC
                 LIMIT 10
             ");
