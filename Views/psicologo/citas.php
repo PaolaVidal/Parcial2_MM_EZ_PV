@@ -97,7 +97,7 @@
         <td><?= (int)$c['id'] ?></td>
         <td><?= htmlspecialchars($nombrePac) ?></td>
         <td><?= htmlspecialchars($c['fecha_hora']) ?></td>
-        <td><span class="badge bg-<?= $c['estado_cita']==='pendiente'?'warning text-dark':'info' ?>"><?= htmlspecialchars($c['estado_cita']) ?></span></td>
+        <td><span class="badge bg-<?= $c['estado_cita']==='pendiente'?'warning text-dark':($c['estado_cita']==='realizada'?'success':'danger') ?>"><?= htmlspecialchars($c['estado_cita']) ?></span></td>
         <td class="text-center">
           <?php $img = htmlspecialchars($c['qr_code']); ?>
           <button type="button" class="btn btn-outline-secondary btn-sm" onclick="mostrarQRModal('<?= $img ?>','CITA:<?= (int)$c['id'] ?>')" title="Ver QR">QR</button>
@@ -109,18 +109,34 @@
           <?php endif; ?>
         </td>
         <td>
-          <?php if(!$p || $p['estado_pago']!=='pagado'): ?>
+          <!-- Botón Atender/Ver Cita -->
+          <?php if($c['estado_cita'] === 'pendiente'): ?>
+            <a href="<?= RUTA ?>index.php?url=psicologo/atenderCita&id=<?= (int)$c['id'] ?>" 
+               class="btn btn-sm btn-primary me-1" title="Atender cita">
+              <i class="fas fa-user-md"></i> Atender
+            </a>
+          <?php elseif($c['estado_cita'] === 'realizada'): ?>
+            <a href="<?= RUTA ?>index.php?url=psicologo/atenderCita&id=<?= (int)$c['id'] ?>" 
+               class="btn btn-sm btn-info me-1" title="Ver detalles">
+              <i class="fas fa-eye"></i> Ver
+            </a>
+          <?php endif; ?>
+          
+          <!-- Botón Pagar -->
+          <?php if($c['estado_cita'] === 'realizada' && (!$p || $p['estado_pago']!=='pagado')): ?>
             <form method="post" action="<?= RUTA ?>index.php?url=psicologo/pagar" style="display:inline" onsubmit="return confirm('Marcar pagado?');">
               <input type="hidden" name="id_cita" value="<?= (int)$c['id'] ?>">
-              <button class="btn btn-sm btn-success">Pagar</button>
+              <button class="btn btn-sm btn-success" title="Registrar pago">
+                <i class="fas fa-dollar-sign"></i> Pagar
+              </button>
             </form>
-          <?php else: ?>
+          <?php elseif($p && $p['estado_pago']==='pagado'): ?>
             <?php 
               $ticketM = new TicketPago();
               $ticket = $ticketM->obtenerPorPago($p['id']);
               if($ticket){
                 $rutaTicket = RUTA . 'ticket/ver/'.$ticket['id'];
-                echo '<a class="btn btn-sm btn-outline-primary" href="'.$rutaTicket.'">Ticket</a>';
+                echo '<a class="btn btn-sm btn-outline-secondary" href="'.$rutaTicket.'" title="Ver ticket"><i class="fas fa-ticket-alt"></i> Ticket</a>';
               }
             ?>
           <?php endif; ?>
@@ -296,9 +312,11 @@ function mostrarQRModal(rutaRel, contenido){
               <div class="card-body" id="scanResultado" style="min-height:150px;">
                 <em class="text-muted">Aún sin escaneo...</em>
               </div>
-              <div class="card-footer py-2 d-flex justify-content-between align-items-center">
-                <button id="btnScanConfirmar" class="btn btn-success btn-sm d-none" onclick="confirmarCitaModal()"><i class="fas fa-check me-1"></i>Confirmar asistencia</button>
-                <div id="scanMensaje" class="small"></div>
+              <div class="card-footer py-2">
+                <button id="btnScanAtender" class="btn btn-primary btn-sm d-none w-100" onclick="atenderCitaModal()">
+                  <i class="fas fa-user-md me-1"></i>Atender Cita
+                </button>
+                <div id="scanMensaje" class="small mt-2"></div>
               </div>
             </div>
           </div>
@@ -338,12 +356,15 @@ function ensureHtml5Lib(cb){
   document.head.appendChild(s);
 }
 function abrirScannerModal(){
-  citaModal = null; ultimoTokenScan='';
+  citaModal = null; 
+  ultimoTokenScan='';
   document.getElementById('scanResultado').innerHTML='<em class="text-muted">Aún sin escaneo...</em>';
-  document.getElementById('btnScanConfirmar').classList.add('d-none');
+  document.getElementById('btnScanAtender').classList.add('d-none');
   document.getElementById('scanManualInput').value='';
   mostrarScanMsg('','');
-  if(window.bootstrap){ bootstrap.Modal.getOrCreateInstance(document.getElementById('scannerModal')).show(); }
+  if(window.bootstrap){ 
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('scannerModal')).show(); 
+  }
   
   // Precargar librería y mostrar estado
   mostrarScanMsg('Cargando librería...','info');
@@ -422,33 +443,79 @@ function detenerScannerModal(){
 function reiniciarScannerModal(){ detenerScannerModal(); setTimeout(iniciarScannerModal,300); }
 function onScanModal(decoded){ procesarTokenModal(decoded.trim(), true); }
 function procesarTokenModal(token, desdeCam){
-  if(!token) return; if(!token.startsWith('CITA:')){ mostrarScanMsg('Formato inválido','danger'); return; }
-  if(desdeCam){ if(token===ultimoTokenScan) return; ultimoTokenScan=token; if(cooldownScan) return; cooldownScan=true; setTimeout(()=>cooldownScan=false,1200); }
-  fetch(BASE+'index.php?url=psicologo/scanConsultar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'token='+encodeURIComponent(token)})
-    .then(r=>r.json()).then(j=>{
-      if(!j.ok){ mostrarScanMsg(j.msg||'Error','danger'); citaModal=null; renderResultadoScan(null); return; }
-      citaModal = j.cita; renderResultadoScan(j.cita);
-      if(j.cita.estado_cita==='pendiente') document.getElementById('btnScanConfirmar').classList.remove('d-none'); else mostrarScanMsg('Ya '+j.cita.estado_cita,'info');
-      detenerScannerModal();
-    }).catch(()=>mostrarScanMsg('Fallo red','danger'));
+  if(!token) return; 
+  if(!token.startsWith('CITA:')){ 
+    mostrarScanMsg('Formato inválido','danger'); 
+    return; 
+  }
+  if(desdeCam){ 
+    if(token===ultimoTokenScan) return; 
+    ultimoTokenScan=token; 
+    if(cooldownScan) return; 
+    cooldownScan=true; 
+    setTimeout(()=>cooldownScan=false,1200); 
+  }
+  
+  fetch(BASE+'index.php?url=psicologo/scanConsultar',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'token='+encodeURIComponent(token)
+  })
+  .then(r=>r.json())
+  .then(j=>{
+    if(!j.ok){ 
+      mostrarScanMsg(j.msg||'Error','danger'); 
+      citaModal=null; 
+      renderResultadoScan(null); 
+      return; 
+    }
+    citaModal = j.cita; 
+    renderResultadoScan(j.cita);
+    
+    // Mostrar botón "Atender" si no está cancelada
+    if(j.cita.estado_cita !== 'cancelada'){
+      document.getElementById('btnScanAtender').classList.remove('d-none');
+      if(j.cita.estado_cita === 'pendiente'){
+        mostrarScanMsg('✓ Cita encontrada. Puedes atenderla.','success');
+      } else {
+        mostrarScanMsg('Cita ya realizada. Puedes ver detalles.','info');
+      }
+    } else {
+      mostrarScanMsg('Cita cancelada','warning');
+    }
+    
+    detenerScannerModal();
+  })
+  .catch(()=>mostrarScanMsg('Fallo red','danger'));
 }
+
 function renderResultadoScan(c){
   const d=document.getElementById('scanResultado');
-  if(!c){ d.innerHTML='<em class="text-muted">Sin datos</em>'; return; }
-  d.innerHTML=`<div><strong>ID:</strong> ${c.id}</div>
-    <div><strong>Paciente:</strong> ${c.id_paciente}</div>
-    <div><strong>Fecha/Hora:</strong> ${c.fecha_hora}</div>
-    <div><strong>Estado:</strong> <span class="badge bg-${c.estado_cita==='pendiente'?'warning text-dark':'success'}">${c.estado_cita}</span></div>`;
+  if(!c){ 
+    d.innerHTML='<em class="text-muted">Sin datos</em>'; 
+    return; 
+  }
+  
+  const estadoBadge = c.estado_cita==='pendiente' 
+    ? 'warning text-dark' 
+    : (c.estado_cita==='realizada' ? 'success' : 'danger');
+  
+  d.innerHTML=`
+    <div class="mb-2"><strong>ID Cita:</strong> #${c.id}</div>
+    <div class="mb-2"><strong>Paciente:</strong> ${c.nombre_paciente || 'Paciente #'+c.id_paciente}</div>
+    <div class="mb-2"><strong>Fecha/Hora:</strong> ${c.fecha_hora}</div>
+    <div><strong>Estado:</strong> <span class="badge bg-${estadoBadge}">${c.estado_cita.toUpperCase()}</span></div>
+  `;
 }
-function confirmarCitaModal(){
-  if(!citaModal) return mostrarScanMsg('No hay cita','warning');
-  fetch(BASE+'index.php?url=psicologo/scanConfirmar',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'id='+encodeURIComponent(citaModal.id)})
-    .then(r=>r.json()).then(j=>{
-      if(!j.ok) return mostrarScanMsg(j.msg||'No se confirmó','danger');
-      mostrarScanMsg('Cita confirmada','success');
-      citaModal.estado_cita='realizada'; renderResultadoScan(citaModal); document.getElementById('btnScanConfirmar').classList.add('d-none');
-      // Opcional: refrescar la página o actualizar fila
-    }).catch(()=>mostrarScanMsg('Error confirmación','danger'));
+
+function atenderCitaModal(){
+  if(!citaModal){
+    mostrarScanMsg('No hay cita cargada','warning');
+    return;
+  }
+  
+  // Redirigir a la vista de atender cita
+  window.location.href = BASE + 'index.php?url=psicologo/atenderCita&id=' + citaModal.id;
 }
 function mostrarScanMsg(msg,tipo){ 
   const el=document.getElementById('scanMensaje'); 

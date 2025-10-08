@@ -4,6 +4,7 @@ require_once __DIR__ . '/../Models/Paciente.php';
 require_once __DIR__ . '/../Models/Pago.php';
 require_once __DIR__ . '/../Models/TicketPago.php';
 require_once __DIR__ . '/../Models/Psicologo.php';
+require_once __DIR__ . '/../Models/Evaluacion.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
 require_once __DIR__ . '/../helpers/PDFHelper.php';
 require_once __DIR__ . '/../helpers/ExcelHelper.php';
@@ -270,12 +271,13 @@ class PsicologoController {
         echo json_encode($res);
     }
 
-    // Nuevo: solo consulta (no confirma)
+    // Nuevo: solo consulta (no confirma) - ahora retorna info para "atender"
     public function scanConsultar(): void {
         $this->requirePsicologo();
         $rawInput = trim($_POST['token'] ?? '');
-    $idPsico = $this->currentPsicologoId();
+        $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
+        
         if(stripos($rawInput,'CITA:')!==0){
             $res=['ok'=>false,'msg'=>'Formato inválido. Use CITA:<id>'];
         } else {
@@ -285,30 +287,152 @@ class PsicologoController {
             } else {
                 $id = (int)$num;
                 $cita = $citaM->obtener($id);
-                if(!$cita){ $res=['ok'=>false,'msg'=>'Cita no encontrada']; }
-                elseif((int)$cita['id_psicologo']!==$idPsico){ $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; }
-                else { $res=['ok'=>true,'cita'=>$cita]; }
+                if(!$cita){ 
+                    $res=['ok'=>false,'msg'=>'Cita no encontrada']; 
+                } elseif((int)$cita['id_psicologo']!==$idPsico){ 
+                    $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; 
+                } else { 
+                    // Obtener nombre del paciente
+                    $pacM = new Paciente();
+                    $pac = $pacM->getById((int)$cita['id_paciente']);
+                    $cita['nombre_paciente'] = $pac['nombre'] ?? 'Desconocido';
+                    
+                    $res=['ok'=>true,'cita'=>$cita,'msg'=>'Cita encontrada'];
+                }
             }
         }
-        header('Content-Type: application/json'); echo json_encode($res);
+        header('Content-Type: application/json'); 
+        echo json_encode($res);
     }
 
-    // Nuevo: confirmar asistencia explícita
+    // Ya no se usa para confirmar desde scanner - solo si fuera necesario en otro contexto
     public function scanConfirmar(): void {
         $this->requirePsicologo();
-    $idPsico = $this->currentPsicologoId();
+        $idPsico = $this->currentPsicologoId();
         $id = (int)($_POST['id'] ?? 0);
         $citaM = new Cita();
         $cita = $citaM->obtener($id);
-        if(!$id || !$cita){ $res=['ok'=>false,'msg'=>'Cita no encontrada']; }
-        elseif((int)$cita['id_psicologo']!==$idPsico){ $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; }
-        elseif($cita['estado_cita']==='realizada'){ $res=['ok'=>true,'msg'=>'Ya estaba realizada','cita'=>$cita]; }
-        else {
+        if(!$id || !$cita){ 
+            $res=['ok'=>false,'msg'=>'Cita no encontrada']; 
+        } elseif((int)$cita['id_psicologo']!==$idPsico){ 
+            $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; 
+        } elseif($cita['estado_cita']==='realizada'){ 
+            $res=['ok'=>true,'msg'=>'Ya estaba realizada','cita'=>$cita]; 
+        } else {
             $citaM->marcarRealizada($id);
             $cita['estado_cita']='realizada';
             $res=['ok'=>true,'msg'=>'Cita confirmada','cita'=>$cita];
         }
-        header('Content-Type: application/json'); echo json_encode($res);
+        header('Content-Type: application/json'); 
+        echo json_encode($res);
+    }
+
+    // Mostrar vista de atender cita (con evaluaciones)
+    public function atenderCita(): void {
+        $this->requirePsicologo();
+        $idCita = (int)($_GET['id'] ?? 0);
+        $idPsico = $this->currentPsicologoId();
+        
+        $citaM = new Cita();
+        $cita = $citaM->obtener($idCita);
+        
+        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=nf');
+            return;
+        }
+        
+        // Obtener paciente
+        $pacM = new Paciente();
+        $paciente = $pacM->getById((int)$cita['id_paciente']);
+        
+        // Obtener evaluaciones existentes
+        $evalM = new Evaluacion();
+        $evaluaciones = $evalM->obtenerPorCita($idCita);
+        
+        // Determinar si se puede editar (solo si no está realizada o cancelada)
+        $puedeEditar = !in_array($cita['estado_cita'], ['realizada', 'cancelada']);
+        
+        $this->render('psicologo/atender_cita', [
+            'cita' => $cita,
+            'paciente' => $paciente,
+            'evaluaciones' => $evaluaciones,
+            'puedeEditar' => $puedeEditar
+        ]);
+    }
+
+    // Guardar evaluación (AJAX)
+    public function guardarEvaluacion(): void {
+        $this->requirePsicologo();
+        header('Content-Type: application/json');
+        
+        $idCita = (int)($_POST['id_cita'] ?? 0);
+        $estadoEmocional = (int)($_POST['estado_emocional'] ?? 0);
+        $comentarios = trim($_POST['comentarios'] ?? '');
+        
+        $idPsico = $this->currentPsicologoId();
+        $citaM = new Cita();
+        $cita = $citaM->obtener($idCita);
+        
+        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
+            echo json_encode(['ok'=>false,'msg'=>'Cita no válida']);
+            return;
+        }
+        
+        if(in_array($cita['estado_cita'], ['realizada', 'cancelada'])){
+            echo json_encode(['ok'=>false,'msg'=>'No se puede agregar evaluaciones a citas finalizadas']);
+            return;
+        }
+        
+        if($estadoEmocional < 1 || $estadoEmocional > 10){
+            echo json_encode(['ok'=>false,'msg'=>'Estado emocional debe estar entre 1 y 10']);
+            return;
+        }
+        
+        $evalM = new Evaluacion();
+        $idEval = $evalM->crear($idCita, $estadoEmocional, $comentarios);
+        
+        if($idEval){
+            $evaluacion = $evalM->obtener($idEval);
+            echo json_encode(['ok'=>true,'msg'=>'Evaluación guardada','evaluacion'=>$evaluacion]);
+        } else {
+            echo json_encode(['ok'=>false,'msg'=>'Error al guardar']);
+        }
+    }
+
+    // Finalizar cita (marcarla como realizada)
+    public function finalizarCita(): void {
+        $this->requirePsicologo();
+        $idCita = (int)($_POST['id_cita'] ?? 0);
+        $idPsico = $this->currentPsicologoId();
+        
+        $citaM = new Cita();
+        $cita = $citaM->obtener($idCita);
+        
+        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=nf');
+            return;
+        }
+        
+        if($cita['estado_cita'] === 'realizada'){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/atenderCita&id='.$idCita.'&msg=ya_realizada');
+            return;
+        }
+        
+        // Verificar que tenga al menos una evaluación
+        $evalM = new Evaluacion();
+        $countEval = $evalM->contarPorCita($idCita);
+        
+        if($countEval === 0){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/atenderCita&id='.$idCita.'&err=sin_eval');
+            return;
+        }
+        
+        // Marcar como realizada
+        if($citaM->marcarRealizada($idCita)){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&ok=finalizada');
+        } else {
+            header('Location: ' . RUTA . 'index.php?url=psicologo/atenderCita&id='.$idCita.'&err=update');
+        }
     }
 
     /** Devuelve slots disponibles (intervalo 30 o 60) para una fecha dada */
