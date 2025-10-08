@@ -21,6 +21,13 @@ class PublicController {
             echo '<div class="alert alert-danger">Vista pública faltante: ' . htmlspecialchars($vista) . '</div>';
             return;
         }
+        // Asegurar que RUTA esté disponible
+        if(!defined('RUTA')) {
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/') . '/';
+            define('RUTA', $scheme . '://' . $host . $basePath);
+        }
         extract($data);
         require $file;
     }
