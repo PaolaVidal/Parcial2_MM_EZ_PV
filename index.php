@@ -124,12 +124,16 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <style>
         :root { --primary-color:#4e8098; --secondary-color:#f4a261; --accent-color:#2a9d8f; }
-        body { background:#f8f9fa; }
+        body { background:#f8f9fa; min-height: 100vh; display: flex; flex-direction: column; }
+        main { flex: 1; }
         .navbar { background:var(--primary-color)!important; }
         .navbar-brand,.nav-link { color:#fff!important; }
         .nav-link:hover { color:var(--secondary-color)!important; }
         .btn-primary { background:var(--accent-color); border-color:var(--accent-color); }
         .btn-primary:hover { background:#248277; border-color:#248277; }
+        .nav-link.btn { border-radius: 20px; }
+        footer a { transition: opacity 0.3s; }
+        footer a:hover { opacity: 1 !important; text-decoration: underline !important; }
     </style>
 </head>
 <body>
@@ -188,9 +192,12 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
     </li>
     <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/logout"><i class="fas fa-sign-out-alt me-1"></i>Salir</a></li>
 <?php else: ?>
-    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>auth/login"><i class="fas fa-sign-in-alt me-1"></i>Iniciar sesión</a></li>
-    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>public/disponibilidad">Psicólogos</a></li>
-    <li class="nav-item"><a class="nav-link" href="<?= RUTA ?>public/portal">Portal Paciente</a></li>
+    <li class="nav-item"><a class="nav-link <?= ($urlActual === 'public/disponibilidad' || str_starts_with($urlActual, 'public/disponibilidad')) ? 'active fw-semibold' : '' ?>" href="<?= RUTA ?>public/disponibilidad">
+        <i class="fas fa-user-md me-1"></i>Nuestros Psicólogos
+    </a></li>
+    <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="<?= RUTA ?>public/acceso">
+        <i class="fas fa-user-circle me-1"></i>Portal Paciente
+    </a></li>
 <?php endif; ?>
                 </ul>
             </div>
@@ -228,17 +235,35 @@ if (isset($_GET['url'])) {
         echo '<div class="alert alert-warning">Página no encontrada</div>';
     }
 } else {
-    // Página inicial por defecto
-    echo '<div class="p-5 bg-white rounded shadow-sm">
-            <h1 class="h4 mb-3">Bienvenido</h1>
-            <p class="mb-0">Usa el menú para navegar.</p>
-          </div>';
+    // Página inicial por defecto: Portal del Paciente
+    require_once __DIR__ . '/controllers/PublicController.php';
+    $publicCtrl = new PublicController();
+    $publicCtrl->portal();
 }
 ?>
 </main>
 
-<footer class="text-center py-4 small text-muted">
-    &copy; <?= date('Y'); ?> Plataforma Psicología
+<footer class="bg-light border-top mt-5">
+    <div class="container py-4">
+        <div class="row">
+            <div class="col-md-8">
+                <p class="text-muted mb-2 small">
+                    <i class="fas fa-heart text-danger"></i> 
+                    &copy; <?= date('Y'); ?> Plataforma de Psicología - Cuidando tu salud mental
+                </p>
+                <p class="text-muted mb-0 small">
+                    <i class="fas fa-shield-alt"></i> Tus datos están protegidos y son confidenciales
+                </p>
+            </div>
+            <div class="col-md-4 text-md-end">
+                <div class="small text-muted">
+                    <a href="<?= RUTA ?>auth/login" class="text-decoration-none text-muted" style="opacity: 0.5;">
+                        <i class="fas fa-lock"></i> Acceso Personal
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" crossorigin="anonymous"></script>

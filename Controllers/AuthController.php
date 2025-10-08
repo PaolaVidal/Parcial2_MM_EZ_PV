@@ -30,9 +30,9 @@ class AuthController {
                 ];
                 // Redirigir al dashboard según el rol
                 if ($user['rol'] === 'admin') {
-                    header('Location: index.php?controller=Admin&action=dashboard');
+                    header('Location: ' . RUTA . 'admin/dashboard');
                 } elseif ($user['rol'] === 'psicologo') {
-                    header('Location: index.php?controller=Psicologo&action=dashboard');
+                    header('Location: ' . RUTA . 'psicologo/dashboard');
                 } else {
                     header('Location: ' . RUTA);
                 }
@@ -142,7 +142,7 @@ class AuthController {
 
     public function logout(): void {
         session_destroy();
-        header('Location: ' . RUTA . 'auth/login');
+        header('Location: ' . RUTA); // Redirige al portal público
         exit;
     }
 }
