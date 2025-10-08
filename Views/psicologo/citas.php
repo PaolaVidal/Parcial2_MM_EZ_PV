@@ -133,7 +133,7 @@
 <table class="table table-sm table-striped" id="tablaCitas">
   <thead><tr><th>ID</th><th>Paciente</th><th>Fecha/Hora</th><th>Estado</th><th>QR</th><th>Pago</th><th>Acciones</th></tr></thead>
   <tbody>
-    <?php $pagoModel = new Pago(); $todas = array_merge($data['pendientes'],$data['realizadas']); ?>
+    <?php $pagoModel = new Pago(); $todas = array_merge($data['pendientes'],$data['realizadas'],$data['canceladas']); ?>
     <?php foreach($todas as $c): ?>
       <?php $p = $pagoModel->obtenerPorCita((int)$c['id']); ?>
       <?php $nombrePac = $mapPac[$c['id_paciente']] ?? ('Paciente #'.$c['id_paciente']); ?>

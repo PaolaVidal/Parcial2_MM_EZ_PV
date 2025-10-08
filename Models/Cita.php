@@ -57,13 +57,21 @@ class Cita extends BaseModel {
     public function listarPsicologo(int $idPsico, int $limitRealizadas = 10): array {
         $pend = $this->db->prepare("SELECT * FROM Cita WHERE id_psicologo=? AND estado='activo' AND estado_cita='pendiente' ORDER BY fecha_hora ASC");
         $pend->execute([$idPsico]);
-        $real = $this->db->prepare("SELECT * FROM Cita WHERE id_psicologo=? AND estado='activo' AND estado_cita='realizada' ORDER BY fecha_hora DESC LIMIT ?");
+        
+        // Realizadas: NO filtrar por estado para mostrar historial (ya tienen estado='inactivo')
+        $real = $this->db->prepare("SELECT * FROM Cita WHERE id_psicologo=? AND estado_cita='realizada' ORDER BY fecha_hora DESC LIMIT ?");
         $real->bindValue(1,$idPsico, PDO::PARAM_INT);
         $real->bindValue(2,$limitRealizadas, PDO::PARAM_INT);
         $real->execute();
+        
+        // Agregar canceladas (últimas 20) - incluye inactivas para mostrar historial
+        $canc = $this->db->prepare("SELECT * FROM Cita WHERE id_psicologo=? AND estado_cita='cancelada' ORDER BY fecha_hora DESC LIMIT 20");
+        $canc->execute([$idPsico]);
+        
         return [
             'pendientes' => $pend->fetchAll(),
-            'realizadas' => $real->fetchAll()
+            'realizadas' => $real->fetchAll(),
+            'canceladas' => $canc->fetchAll()
         ];
     }
 
@@ -116,7 +124,8 @@ class Cita extends BaseModel {
     }
 
     public function marcarRealizada(int $id): bool {
-        $st = $this->db->prepare("UPDATE Cita SET estado_cita='realizada' WHERE id=?");
+        // Marcar como realizada Y liberar el horario (estado='inactivo')
+        $st = $this->db->prepare("UPDATE Cita SET estado_cita='realizada', estado='inactivo' WHERE id=?");
         return $st->execute([$id]);
     }
 

@@ -148,7 +148,7 @@ class PsicologoController {
         $evalM = new Evaluacion();
     $list = $citaM->listarPsicologo($idPsico);
     // Unificar y ordenar por fecha_hora ASC manteniendo estado_cita original
-    $todas = array_merge($list['pendientes'],$list['realizadas']);
+    $todas = array_merge($list['pendientes'], $list['realizadas'], $list['canceladas'] ?? []);
     usort($todas, function($a,$b){ return strcmp($a['fecha_hora'],$b['fecha_hora']); });
     
     // Agregar conteo de evaluaciones a cada cita
@@ -157,9 +157,10 @@ class PsicologoController {
     }
     unset($cita); // Limpiar referencia
     
-    // Repartir de nuevo en pendientes/realizadas ya ordenadas si se necesita en otras partes
+    // Repartir de nuevo en pendientes/realizadas/canceladas ya ordenadas
     $list['pendientes'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='pendiente'));
     $list['realizadas'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='realizada'));
+    $list['canceladas'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='cancelada'));
     $pacientes = $pacM->listarTodos();
     $this->render('psicologo/citas',[ 'data'=>$list,'pacientes'=>$pacientes ]);
     }
@@ -500,10 +501,11 @@ class PsicologoController {
             return;
         }
         
-        // Actualizar estado a cancelada
+        // Actualizar estado a cancelada Y liberar el slot (estado='inactivo')
         try {
             $db = $citaM->pdo();
-            $st = $db->prepare('UPDATE Cita SET estado_cita = \'cancelada\' WHERE id = ?');
+            // ✅ Cambiar estado_cita='cancelada' Y estado='inactivo' para liberar horario
+            $st = $db->prepare('UPDATE Cita SET estado_cita = \'cancelada\', estado = \'inactivo\' WHERE id = ?');
             $st->execute([$idCita]);
             header('Location: ' . RUTA . 'index.php?url=psicologo/citas&ok=cancelada');
         } catch(Exception $e) {
