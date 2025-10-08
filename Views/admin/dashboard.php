@@ -1,8 +1,8 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h1 class="h3 mb-0"><i class="fas fa-chart-line me-2"></i>Dashboard Administrador</h1>
-  <a href="<?= url('admin','estadisticas') ?>" class="btn btn-primary">
-    <i class="fas fa-chart-bar me-1"></i>Estadísticas Detalladas
+  <a href="<?= url('admin','estadisticas') ?>" class="btn btn-primary btn-sm">
+    <i class="fas fa-file-pdf me-1"></i>Exportar Reporte PDF
   </a>
 </div>
 
@@ -77,37 +77,26 @@
   </div>
 </div>
 
-<!-- Gráficos -->
+<!-- Gráfico Principal -->
 <div class="row g-3 mb-4">
-  <div class="col-md-4">
-    <div class="card h-100">
-      <div class="card-header bg-white">
-        <h6 class="mb-0"><i class="fas fa-users me-2 text-primary"></i>Usuarios por Estado</h6>
-      </div>
-      <div class="card-body">
-        <canvas id="chartUsuarios" height="200"></canvas>
-      </div>
-    </div>
-  </div>
-  
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="card h-100">
       <div class="card-header bg-white">
         <h6 class="mb-0"><i class="fas fa-calendar me-2 text-info"></i>Citas por Estado</h6>
       </div>
       <div class="card-body">
-        <canvas id="chartCitas" height="200"></canvas>
+        <canvas id="chartCitas" height="180"></canvas>
       </div>
     </div>
   </div>
   
-  <div class="col-md-4">
+  <div class="col-md-6">
     <div class="card h-100">
       <div class="card-header bg-white">
-        <h6 class="mb-0"><i class="fas fa-chart-line me-2 text-success"></i>Ingresos Mensuales</h6>
+        <h6 class="mb-0"><i class="fas fa-chart-line me-2 text-success"></i>Ingresos Mensuales (últimos 6 meses)</h6>
       </div>
       <div class="card-body">
-        <canvas id="chartIngresosMes" height="200"></canvas>
+        <canvas id="chartIngresosMes" height="180"></canvas>
       </div>
     </div>
   </div>
@@ -192,28 +181,8 @@
 <script>
 (async function(){
   try {
-    const r1 = await fetch('<?= url('Admin','jsonUsuariosActivos') ?>').then(r=>r.json());
     const r2 = await fetch('<?= url('Admin','jsonCitasEstados') ?>').then(r=>r.json());
     const r3 = await fetch('<?= url('Admin','jsonIngresosMes') ?>').then(r=>r.json());
-
-    // Chart de Usuarios
-    new Chart(document.getElementById('chartUsuarios'), {
-      type: 'doughnut',
-      data: {
-        labels: Object.keys(r1).map(k => k.charAt(0).toUpperCase() + k.slice(1)),
-        datasets: [{
-          data: Object.values(r1),
-          backgroundColor: ['#198754', '#dc3545', '#ffc107'],
-          borderWidth: 2,
-          borderColor: '#fff'
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } }
-      }
-    });
 
     // Chart de Citas
     new Chart(document.getElementById('chartCitas'), {
@@ -221,17 +190,30 @@
       data: {
         labels: r2.map(o => o.estado.charAt(0).toUpperCase() + o.estado.slice(1)),
         datasets: [{
-          label: 'Cantidad',
+          label: 'Cantidad de Citas',
           data: r2.map(o => o.total),
-          backgroundColor: ['#0d6efd', '#198754', '#dc3545'],
-          borderRadius: 5
+          backgroundColor: ['#ffc107', '#198754', '#dc3545'],
+          borderRadius: 8,
+          borderWidth: 0
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        plugins: { 
+          legend: { display: true, position: 'bottom' },
+          tooltip: { 
+            callbacks: { 
+              label: function(context) { return context.parsed.y + ' citas'; } 
+            } 
+          }
+        },
+        scales: { 
+          y: { 
+            beginAtZero: true, 
+            ticks: { stepSize: 1 } 
+          } 
+        }
       }
     });
 
@@ -244,17 +226,35 @@
           label: 'Ingresos ($)',
           data: r3.map(o => o.total),
           borderColor: '#198754',
-          backgroundColor: 'rgba(25, 135, 84, 0.1)',
+          backgroundColor: 'rgba(25, 135, 84, 0.2)',
           fill: true,
           tension: 0.4,
-          borderWidth: 2
+          borderWidth: 3,
+          pointRadius: 4,
+          pointBackgroundColor: '#198754',
+          pointBorderColor: '#fff',
+          pointBorderWidth: 2
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
+        plugins: { 
+          legend: { display: true, position: 'bottom' },
+          tooltip: { 
+            callbacks: { 
+              label: function(context) { return '$' + context.parsed.y.toFixed(2); } 
+            } 
+          }
+        },
+        scales: { 
+          y: { 
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) { return '$' + value; }
+            }
+          } 
+        }
       }
     });
   } catch(e) {

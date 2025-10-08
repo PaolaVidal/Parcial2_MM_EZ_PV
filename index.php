@@ -136,7 +136,18 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
 <header>
     <nav class="navbar navbar-expand-lg">
         <div class="container">
-            <a class="navbar-brand d-flex align-items-center" href="<?= RUTA; ?>">
+            <?php 
+            // Logo redirige al dashboard según el rol
+            $homeUrl = RUTA;
+            if(isset($_SESSION['usuario'])) {
+                if($_SESSION['usuario']['rol'] === 'admin') {
+                    $homeUrl = url('admin','dashboard');
+                } elseif($_SESSION['usuario']['rol'] === 'psicologo') {
+                    $homeUrl = url('psicologo','dashboard');
+                }
+            }
+            ?>
+            <a class="navbar-brand d-flex align-items-center" href="<?= $homeUrl; ?>">
                 <i class="fas fa-brain me-2"></i><span>Psicología</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
@@ -155,7 +166,6 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
                                 function isAct($seg0,$seg1,$c,$a='index'){ return $seg0===$c && $seg1===$a; }
                             }
                     ?>
-    <li class="nav-item"><a class="nav-link <?= isAct($seg0,$seg1,'psicologo','dashboard')?'active fw-semibold':'' ?>" href="<?= url('psicologo','dashboard') ?>"><i class="fas fa-chart-pie me-1"></i>Dashboard</a></li>
     <li class="nav-item"><a class="nav-link <?= isAct($seg0,$seg1,'psicologo','estadisticas')?'active fw-semibold':'' ?>" href="<?= url('psicologo','estadisticas') ?>"><i class="fas fa-chart-bar me-1"></i>Estadísticas</a></li>
     <li class="nav-item"><a class="nav-link <?= isAct($seg0,$seg1,'psicologo','citas')?'active fw-semibold':'' ?>" href="<?= url('psicologo','citas') ?>"><i class="fas fa-list me-1"></i>Citas</a></li>
     <li class="nav-item"><a class="nav-link <?= ($seg0==='ticket')?'active fw-semibold':'' ?>" href="<?= url('ticket') ?>"><i class="fas fa-ticket me-1"></i>Tickets</a></li>
@@ -164,7 +174,6 @@ if(empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))){
                         $seg0 = strtolower($seg[0] ?? '');
                         $seg1 = strtolower($seg[1] ?? 'index');
                     ?>
-        <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='dashboard')?'active fw-semibold':'' ?>" href="<?= url('admin','dashboard') ?>"><i class="fas fa-chart-line me-1"></i>Dashboard</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='estadisticas')?'active fw-semibold':'' ?>" href="<?= url('admin','estadisticas') ?>"><i class="fas fa-chart-bar me-1"></i>Estadísticas</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='pacientes')?'active fw-semibold':'' ?>" href="<?= url('admin','pacientes') ?>"><i class="fas fa-users me-1"></i>Pacientes</a></li>
         <li class="nav-item"><a class="nav-link <?= ($seg0==='admin' && $seg1==='psicologos')?'active fw-semibold':'' ?>" href="<?= url('admin','psicologos') ?>"><i class="fas fa-user-md me-1"></i>Psicólogos</a></li>

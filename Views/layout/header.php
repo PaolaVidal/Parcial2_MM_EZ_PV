@@ -9,7 +9,18 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
   <div class="container-fluid">
-  <a class="navbar-brand" href="index.php">Psicología</a>
+  <?php 
+  // Logo redirige al dashboard según el rol
+  $homeUrl = 'index.php';
+  if(isset($_SESSION['usuario'])) {
+    if($_SESSION['usuario']['rol'] === 'admin') {
+      $homeUrl = 'index.php?controller=Admin&action=dashboard';
+    } elseif($_SESSION['usuario']['rol'] === 'psicologo') {
+      $homeUrl = 'index.php?controller=Psicologo&action=dashboard';
+    }
+  }
+  ?>
+  <a class="navbar-brand" href="<?= $homeUrl ?>">Psicología</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav" aria-controls="nav" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
@@ -24,7 +35,6 @@
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Admin</a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="<?= url('admin','dashboard') ?>"><i class="fas fa-home me-2"></i>Dashboard</a></li>
                 <li><a class="dropdown-item" href="<?= url('admin','estadisticas') ?>"><i class="fas fa-chart-bar me-2"></i>Estadísticas</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="<?= url('admin','usuarios') ?>"><i class="fas fa-users me-2"></i>Usuarios</a></li>
@@ -35,7 +45,6 @@
               </ul>
             </li>
           <?php elseif($_SESSION['usuario']['rol']==='psicologo'): ?>
-            <li class="nav-item"><a class="nav-link" href="<?= url('Psicologo','dashboard') ?>">Dashboard</a></li>
             <li class="nav-item"><a class="nav-link" href="<?= url('Psicologo','citas') ?>">Mis Citas</a></li>
             <li class="nav-item"><a class="nav-link" href="<?= url('Psicologo','scan') ?>">Escanear</a></li>
           <?php endif; ?>

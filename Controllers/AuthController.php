@@ -28,7 +28,14 @@ class AuthController {
                     'nombre' => $user['nombre'],
                     'rol'    => $user['rol']
                 ];
-                header('Location: ' . RUTA);
+                // Redirigir al dashboard según el rol
+                if ($user['rol'] === 'admin') {
+                    header('Location: index.php?controller=Admin&action=dashboard');
+                } elseif ($user['rol'] === 'psicologo') {
+                    header('Location: index.php?controller=Psicologo&action=dashboard');
+                } else {
+                    header('Location: ' . RUTA);
+                }
                 exit;
             }
             $this->render('auth/login', ['error' => 'Credenciales inválidas']);
