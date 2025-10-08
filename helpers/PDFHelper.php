@@ -123,7 +123,11 @@ class PDFHelper {
             ');
         }
         
-        // Ahora sí podemos usar loadHtml sin error
+        // Limpiar HTML antes de procesar
+        // Eliminar BOM
+        $html = str_replace("\xEF\xBB\xBF", '', $html);
+        
+        // Ahora cargar el HTML
         $dompdf->loadHtml($html);
         
         // Configurar papel
@@ -131,6 +135,11 @@ class PDFHelper {
         
         // Renderizar
         $dompdf->render();
+        
+        // Limpiar buffer de salida antes de enviar PDF
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
         
         // Salida
         $dompdf->stream($filename . '.pdf', [

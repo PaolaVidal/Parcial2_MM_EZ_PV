@@ -868,91 +868,146 @@ class PsicologoController {
         $dataPsico = $psico->get($idPsico);
         $nombrePsico = $dataPsico['nombre'] ?? 'Psicólogo';
         
-        // Generar HTML para el PDF (HTML 4.01 para evitar parser HTML5)
+        // Calcular más estadísticas
+        $citasRealizadas = 0;
+        $citasCanceladas = 0;
+        foreach($citasPorEstado as $row) {
+            if($row['estado_cita'] === 'realizada') $citasRealizadas = $row['total'];
+            if($row['estado_cita'] === 'cancelada') $citasCanceladas = $row['total'];
+        }
+        $tasaAsistencia = $totalCitas > 0 ? ($citasRealizadas / $totalCitas) * 100 : 0;
+        
+        // Generar HTML para el PDF (HTML 4.01 compatible con DomPDF)
         $html = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-        <html>
-        <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-            <style>
-                body { font-family: Arial, sans-serif; font-size: 11px; }
-                h1 { color: #2c3e50; text-align: center; font-size: 18px; margin-bottom: 5px; }
-                h2 { color: #34495e; font-size: 14px; margin-top: 15px; margin-bottom: 8px; border-bottom: 2px solid #3498db; padding-bottom: 3px; }
-                .fecha { text-align: center; color: #7f8c8d; font-size: 10px; margin-bottom: 15px; }
-                .resumen { background: #ecf0f1; padding: 10px; border-radius: 5px; margin-bottom: 15px; }
-                .resumen-item { display: inline-block; width: 48%; margin-bottom: 8px; }
-                .resumen-label { font-weight: bold; color: #2c3e50; }
-                .resumen-valor { color: #2980b9; font-size: 13px; font-weight: bold; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 10px; }
-                th { background: #3498db; color: white; padding: 6px; text-align: left; font-size: 10px; }
-                td { padding: 5px; border-bottom: 1px solid #ddd; }
-                tr:nth-child(even) { background: #f8f9fa; }
-                .text-right { text-align: right; }
-                .text-center { text-align: center; }
-                .badge { padding: 3px 8px; border-radius: 3px; font-size: 9px; font-weight: bold; }
-                .badge-success { background: #27ae60; color: white; }
-                .badge-warning { background: #f39c12; color: white; }
-                .badge-danger { background: #e74c3c; color: white; }
-                .page-break { page-break-after: always; }
-            </style>
-        </head>
-        <body>
-            <h1>Reporte de Estadísticas - ' . htmlspecialchars($nombrePsico) . '</h1>
-            <div class="fecha">Generado el ' . date('d/m/Y H:i:s') . '</div>
-            
-            <div class="resumen">
-                <h2>Resumen General</h2>
-                <div class="resumen-item">
-                    <span class="resumen-label">Total de Citas:</span><br>
-                    <span class="resumen-valor">' . $totalCitas . '</span>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <style>
+        body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; margin: 15px; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; }
+        .header h1 { color: #2c3e50; font-size: 18px; margin: 5px 0; }
+        .header .subtitle { color: #7f8c8d; font-size: 10px; }
+        .header .date { color: #95a5a6; font-size: 9px; }
+        .summary { background: #ecf0f1; padding: 12px; margin-bottom: 15px; border-radius: 5px; }
+        .summary h2 { color: #2c3e50; font-size: 13px; margin: 0 0 10px 0; border-bottom: 2px solid #3498db; padding-bottom: 5px; }
+        .summary-grid { display: table; width: 100%; }
+        .summary-row { display: table-row; }
+        .summary-cell { display: table-cell; padding: 6px; background: white; margin: 3px; border-left: 3px solid #3498db; }
+        .summary-cell:nth-child(even) { background: #f8f9fa; }
+        .stat-label { font-weight: bold; color: #2c3e50; font-size: 9px; }
+        .stat-value { color: #2980b9; font-size: 12px; font-weight: bold; display: block; margin-top: 3px; }
+        h2 { color: #34495e; font-size: 12px; margin-top: 15px; margin-bottom: 8px; border-bottom: 2px solid #3498db; padding-bottom: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 8px; }
+        th { background: #3498db; color: white; padding: 5px 3px; text-align: left; font-size: 9px; font-weight: bold; }
+        td { padding: 4px 3px; border-bottom: 1px solid #ddd; }
+        tr:nth-child(even) { background: #f8f9fa; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .badge { padding: 2px 6px; font-size: 8px; font-weight: bold; border-radius: 3px; }
+        .badge-success { background: #27ae60; color: white; }
+        .badge-warning { background: #f39c12; color: white; }
+        .badge-danger { background: #e74c3c; color: white; }
+        .highlight { background: #fff3cd; padding: 8px; margin: 10px 0; border-left: 4px solid #ffc107; }
+        .footer { text-align: center; font-size: 8px; color: #7f8c8d; margin-top: 15px; border-top: 1px solid #ddd; padding-top: 8px; }
+        .page-break { page-break-after: always; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>REPORTE ESTADISTICO PROFESIONAL</h1>
+        <div class="subtitle">Psicologo: ' . htmlspecialchars($nombrePsico, ENT_QUOTES, 'UTF-8') . '</div>
+        <div class="date">Generado el ' . date('d/m/Y H:i:s') . '</div>
+    </div>
+    
+    <div class="summary">
+        <h2>Resumen Ejecutivo</h2>
+        <div class="summary-grid">
+            <div class="summary-row">
+                <div class="summary-cell">
+                    <span class="stat-label">Total de Citas</span>
+                    <span class="stat-value">' . (int)$totalCitas . '</span>
                 </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Pacientes Únicos:</span><br>
-                    <span class="resumen-valor">' . $totalPacientes . '</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Ingresos Totales:</span><br>
-                    <span class="resumen-valor">$' . number_format($ingresoTotal, 2) . '</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Promedio Diario:</span><br>
-                    <span class="resumen-valor">$' . number_format($promedioIngresoDiario, 2) . '</span>
-                </div>
-                <div class="resumen-item">
-                    <span class="resumen-label">Tasa de Cancelación:</span><br>
-                    <span class="resumen-valor ' . ($tasaCancelacion > 20 ? 'text-danger' : '') . '">' . number_format($tasaCancelacion, 2) . '%</span>
+                <div class="summary-cell">
+                    <span class="stat-label">Citas Realizadas</span>
+                    <span class="stat-value">' . (int)$citasRealizadas . '</span>
                 </div>
             </div>
-            
-            <h2>Citas por Mes (Últimos 12 meses)</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Mes</th>
-                        <th class="text-center">Total de Citas</th>
-                    </tr>
-                </thead>
-                <tbody>';
+            <div class="summary-row">
+                <div class="summary-cell">
+                    <span class="stat-label">Pacientes Unicos</span>
+                    <span class="stat-value">' . (int)$totalPacientes . '</span>
+                </div>
+                <div class="summary-cell">
+                    <span class="stat-label">Tasa de Asistencia</span>
+                    <span class="stat-value">' . number_format((float)$tasaAsistencia, 1) . '%</span>
+                </div>
+            </div>
+            <div class="summary-row">
+                <div class="summary-cell">
+                    <span class="stat-label">Ingresos Totales</span>
+                    <span class="stat-value">$' . number_format((float)$ingresoTotal, 2) . '</span>
+                </div>
+                <div class="summary-cell">
+                    <span class="stat-label">Ingreso Promedio/Dia</span>
+                    <span class="stat-value">$' . number_format((float)$promedioIngresoDiario, 2) . '</span>
+                </div>
+            </div>
+            <div class="summary-row">
+                <div class="summary-cell">
+                    <span class="stat-label">Tasa de Cancelacion</span>
+                    <span class="stat-value">' . number_format((float)$tasaCancelacion, 2) . '%</span>
+                </div>
+                <div class="summary-cell">
+                    <span class="stat-label">Ingreso Promedio/Cita</span>
+                    <span class="stat-value">$' . number_format($totalCitas > 0 ? $ingresoTotal / $totalCitas : 0, 2) . '</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    ' . ($tasaCancelacion > 25 ? '<div class="highlight">
+        <strong>Nota Importante:</strong> Su tasa de cancelacion (' . number_format($tasaCancelacion, 1) . '%) esta por encima del promedio recomendado (25%). 
+        Considere implementar recordatorios o politicas de confirmacion.
+    </div>' : '') . '
+    
+    <h2>Tendencia de Citas (Ultimos 12 meses)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Mes</th>
+                <th class="text-center">Citas</th>
+                <th class="text-center">% del Total</th>
+                <th class="text-right">Tendencia</th>
+            </tr>
+        </thead>
+        <tbody>';
                 
+        $maxCitas = !empty($citasPorMes) ? max(array_column($citasPorMes, 'total')) : 1;
         foreach($citasPorMes as $row) {
+            $mes = htmlspecialchars($row['mes'] ?? '', ENT_QUOTES, 'UTF-8');
+            $porcentaje = $totalCitas > 0 ? ($row['total'] / $totalCitas) * 100 : 0;
+            $barra = str_repeat('█', round(($row['total'] / $maxCitas) * 10));
             $html .= '<tr>
-                <td>' . htmlspecialchars($row['mes']) . '</td>
-                <td class="text-center">' . $row['total'] . '</td>
-            </tr>';
+            <td>' . $mes . '</td>
+            <td class="text-center"><strong>' . (int)$row['total'] . '</strong></td>
+            <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
+            <td class="text-right">' . $barra . '</td>
+        </tr>';
         }
-        
-        $html .= '</tbody>
-            </table>
-            
-            <h2>Distribución de Citas por Estado</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Estado</th>
-                        <th class="text-center">Total</th>
-                        <th class="text-center">Porcentaje</th>
-                    </tr>
-                </thead>
-                <tbody>';
+    
+    $html .= '</tbody>
+    </table>
+    
+    <h2>Distribucion de Citas por Estado</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Estado</th>
+                <th class="text-center">Total</th>
+                <th class="text-center">Porcentaje</th>
+            </tr>
+        </thead>
+        <tbody>';
                 
         foreach($citasPorEstado as $row) {
             $porcentaje = $totalCitas > 0 ? ($row['total'] / $totalCitas) * 100 : 0;
@@ -961,91 +1016,116 @@ class PsicologoController {
             elseif($row['estado_cita'] === 'pendiente') $badgeClass .= ' badge-warning';
             elseif($row['estado_cita'] === 'cancelada') $badgeClass .= ' badge-danger';
             
+            $estadoTexto = htmlspecialchars(ucfirst($row['estado_cita'] ?? ''), ENT_QUOTES, 'UTF-8');
+            
             $html .= '<tr>
-                <td><span class="' . $badgeClass . '">' . ucfirst($row['estado_cita']) . '</span></td>
-                <td class="text-center">' . $row['total'] . '</td>
-                <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
-            </tr>';
+            <td><span class="' . $badgeClass . '">' . $estadoTexto . '</span></td>
+            <td class="text-center">' . (int)$row['total'] . '</td>
+            <td class="text-center">' . number_format((float)$porcentaje, 1) . '%</td>
+        </tr>';
         }
-        
-        $html .= '</tbody>
-            </table>
-            
-            <div class="page-break"></div>
-            
-            <h2>Ingresos por Mes</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Mes</th>
-                        <th class="text-right">Ingresos</th>
-                    </tr>
-                </thead>
-                <tbody>';
+    
+    $html .= '</tbody>
+    </table>
+    
+    <div class="page-break"></div>
+    
+    <h2>Analisis de Ingresos Mensuales</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Mes</th>
+                <th class="text-right">Ingresos</th>
+                <th class="text-center">% del Total</th>
+                <th class="text-center">vs Promedio</th>
+            </tr>
+        </thead>
+        <tbody>';
                 
+        $totalIngresos = array_sum(array_column($ingresosPorMes, 'total'));
+        $promedioMensual = count($ingresosPorMes) > 0 ? $totalIngresos / count($ingresosPorMes) : 0;
         foreach($ingresosPorMes as $row) {
+            $mes = htmlspecialchars($row['mes'] ?? '', ENT_QUOTES, 'UTF-8');
+            $porcentaje = $totalIngresos > 0 ? ($row['total'] / $totalIngresos) * 100 : 0;
+            $vsPromedio = $promedioMensual > 0 ? (($row['total'] - $promedioMensual) / $promedioMensual) * 100 : 0;
+            $indicador = $vsPromedio > 0 ? '(+' . number_format($vsPromedio, 0) . '%)' : ($vsPromedio < 0 ? '(' . number_format($vsPromedio, 0) . '%)' : '');
             $html .= '<tr>
-                <td>' . htmlspecialchars($row['mes']) . '</td>
-                <td class="text-right">$' . number_format($row['total'], 2) . '</td>
-            </tr>';
+            <td>' . $mes . '</td>
+            <td class="text-right"><strong>$' . number_format((float)$row['total'], 2) . '</strong></td>
+            <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
+            <td class="text-center">' . $indicador . '</td>
+        </tr>';
         }
         
         $html .= '</tbody>
-            </table>
-            
-            <h2>Top 10 Pacientes Más Frecuentes</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th class="text-center">#</th>
-                        <th>Nombre del Paciente</th>
-                        <th class="text-center">Total de Citas</th>
-                    </tr>
-                </thead>
-                <tbody>';
+    </table>
+    
+    <h2>Top 10 Pacientes Mas Frecuentes</h2>
+    <table>
+        <thead>
+            <tr>
+                <th class="text-center">#</th>
+                <th>Nombre del Paciente</th>
+                <th class="text-center">Total Citas</th>
+                <th class="text-center">% del Total</th>
+                <th class="text-center">Categoria</th>
+            </tr>
+        </thead>
+        <tbody>';
                 
         $pos = 1;
         foreach($pacientesFrecuentes as $pac) {
-            $nombre = $pac['nombre'] ?: 'Paciente #' . $pac['id_paciente'];
+            $nombre = $pac['nombre'] ? htmlspecialchars($pac['nombre'], ENT_QUOTES, 'UTF-8') : 'Paciente #' . (int)$pac['id_paciente'];
+            $porcentaje = $totalCitas > 0 ? ($pac['total_citas'] / $totalCitas) * 100 : 0;
+            $categoria = $pac['total_citas'] >= 5 ? 'Frecuente' : ($pac['total_citas'] >= 3 ? 'Regular' : 'Ocasional');
             $html .= '<tr>
-                <td class="text-center">' . $pos++ . '</td>
-                <td>' . htmlspecialchars($nombre) . '</td>
-                <td class="text-center">' . $pac['total_citas'] . '</td>
-            </tr>';
+            <td class="text-center"><strong>' . $pos++ . '</strong></td>
+            <td>' . $nombre . '</td>
+            <td class="text-center">' . (int)$pac['total_citas'] . '</td>
+            <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
+            <td class="text-center">' . $categoria . '</td>
+        </tr>';
         }
         
         $html .= '</tbody>
-            </table>';
+    </table>';
             
         if (!empty($horariosPopulares)) {
             $html .= '
-            <h2>Horarios Más Solicitados</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Hora</th>
-                        <th class="text-center">Citas Agendadas</th>
-                    </tr>
-                </thead>
-                <tbody>';
+    <h2>Horarios Mas Solicitados</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Hora</th>
+                <th class="text-center">Citas Agendadas</th>
+            </tr>
+        </thead>
+        <tbody>';
                 
             foreach($horariosPopulares as $h) {
                 $html .= '<tr>
-                    <td>' . $h['hora'] . ':00</td>
-                    <td class="text-center">' . $h['total'] . '</td>
-                </tr>';
+            <td>' . (int)$h['hora'] . ':00</td>
+            <td class="text-center">' . (int)$h['total'] . '</td>
+        </tr>';
             }
             
             $html .= '</tbody>
-            </table>';
+    </table>';
         }
         
         $html .= '
-        </body>
-        </html>';
+    
+    <div class="footer">
+        <strong>Sistema de Gestion de Consultorio Psicologico</strong><br>
+        Reporte Profesional Confidencial - ' . htmlspecialchars($nombrePsico, ENT_QUOTES, 'UTF-8') . '<br>
+        Total de Registros: ' . $totalCitas . ' citas | ' . $totalPacientes . ' pacientes unicos<br>
+        Generado: ' . date('d/m/Y H:i:s') . '
+    </div>
+</body>
+</html>';
         
         // Generar PDF (PDFHelper agrega .pdf automáticamente)
-        $filename = 'Estadisticas_' . date('Y-m-d_His');
+        $filename = 'Reporte_' . preg_replace('/[^A-Za-z0-9_]/', '_', $nombrePsico) . '_' . date('Ymd_His');
         PDFHelper::generarPDF($html, $filename, true);
     }
 }

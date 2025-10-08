@@ -785,54 +785,165 @@ class AdminController {
         $citas = $stCitas->fetchAll(PDO::FETCH_ASSOC);
         
         if($formato === 'pdf') {
-            // Generar HTML para el PDF
-            $html = '<!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: Arial, sans-serif; font-size: 10px; }
-                    h1 { text-align: center; color: #2C3E50; font-size: 18px; }
-                    h2 { color: #3498DB; font-size: 14px; margin-top: 20px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                    th { background: #3498DB; color: white; padding: 8px; text-align: left; }
-                    td { padding: 6px; border-bottom: 1px solid #ddd; }
-                    tr:nth-child(even) { background: #f9f9f9; }
-                    .stats { margin: 20px 0; }
-                    .stat-box { display: inline-block; margin: 10px; padding: 10px; background: #ecf0f1; }
-                </style>
-            </head>
-            <body>
-                <h1>Estadísticas del Sistema - ' . $anio . ($mes ? '/' . $mes : '') . '</h1>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Fecha</th>
-                            <th>Paciente</th>
-                            <th>Psicólogo</th>
-                            <th>Especialidad</th>
-                            <th>Estado</th>
-                            <th>Monto</th>
-                        </tr>
-                    </thead>
-                    <tbody>';
+            // Calcular estadísticas
+            $totalCitas = count($citas);
+            $realizadas = count(array_filter($citas, fn($c) => $c['estado'] === 'realizada'));
+            $pendientes = count(array_filter($citas, fn($c) => $c['estado'] === 'pendiente'));
+            $canceladas = count(array_filter($citas, fn($c) => $c['estado'] === 'cancelada'));
+            $ingresoTotal = array_sum(array_column($citas, 'monto'));
+            $promedioIngreso = $totalCitas > 0 ? $ingresoTotal / $totalCitas : 0;
             
+            // Agrupar por psicólogo
+            $porPsicologo = [];
             foreach($citas as $c) {
+                $ps = $c['psicologo'] ?? 'Desconocido';
+                if(!isset($porPsicologo[$ps])) {
+                    $porPsicologo[$ps] = ['total' => 0, 'ingresos' => 0, 'especialidad' => $c['especialidad'] ?? 'N/A'];
+                }
+                $porPsicologo[$ps]['total']++;
+                $porPsicologo[$ps]['ingresos'] += (float)$c['monto'];
+            }
+            arsort($porPsicologo);
+            $topPsicologos = array_slice($porPsicologo, 0, 5, true);
+            
+            // Generar HTML para el PDF (compatible con DomPDF)
+            $html = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <style>
+        body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; margin: 15px; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #2C3E50; padding-bottom: 10px; }
+        .header h1 { color: #2C3E50; font-size: 20px; margin: 5px 0; }
+        .header .subtitle { color: #7f8c8d; font-size: 11px; }
+        .summary { background: #ecf0f1; padding: 12px; margin-bottom: 15px; border-radius: 5px; }
+        .summary h2 { color: #2C3E50; font-size: 14px; margin: 0 0 10px 0; border-bottom: 2px solid #3498DB; padding-bottom: 5px; }
+        .stat-row { margin: 8px 0; padding: 5px; background: white; border-left: 4px solid #3498DB; }
+        .stat-label { font-weight: bold; color: #2C3E50; display: inline-block; width: 45%; }
+        .stat-value { color: #2980b9; font-weight: bold; font-size: 11px; }
+        h2 { color: #2C3E50; font-size: 13px; margin-top: 20px; margin-bottom: 8px; border-bottom: 2px solid #3498DB; padding-bottom: 3px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 8px; }
+        th { background: #3498DB; color: white; padding: 6px 4px; text-align: left; font-weight: bold; font-size: 9px; }
+        td { padding: 5px 4px; border-bottom: 1px solid #ddd; }
+        tr:nth-child(even) { background: #f9f9f9; }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .badge { padding: 2px 6px; border-radius: 3px; font-size: 8px; font-weight: bold; }
+        .badge-success { background: #27ae60; color: white; }
+        .badge-warning { background: #f39c12; color: white; }
+        .badge-danger { background: #e74c3c; color: white; }
+        .footer { text-align: center; font-size: 8px; color: #7f8c8d; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px; }
+        .page-break { page-break-after: always; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>REPORTE DE ESTADISTICAS DEL SISTEMA</h1>
+        <div class="subtitle">Periodo: ' . htmlspecialchars($anio . ($mes ? '/' . $mes : ' (Todo el ano)')) . '</div>
+        <div class="subtitle">Generado: ' . date('d/m/Y H:i:s') . '</div>
+    </div>
+    
+    <div class="summary">
+        <h2>Resumen Ejecutivo</h2>
+        <div class="stat-row">
+            <span class="stat-label">Total de Citas:</span>
+            <span class="stat-value">' . $totalCitas . '</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Citas Realizadas:</span>
+            <span class="stat-value">' . $realizadas . ' (' . ($totalCitas > 0 ? round(($realizadas/$totalCitas)*100, 1) : 0) . '%)</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Citas Pendientes:</span>
+            <span class="stat-value">' . $pendientes . ' (' . ($totalCitas > 0 ? round(($pendientes/$totalCitas)*100, 1) : 0) . '%)</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Citas Canceladas:</span>
+            <span class="stat-value">' . $canceladas . ' (' . ($totalCitas > 0 ? round(($canceladas/$totalCitas)*100, 1) : 0) . '%)</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Ingresos Totales:</span>
+            <span class="stat-value">$' . number_format($ingresoTotal, 2) . '</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Ingreso Promedio por Cita:</span>
+            <span class="stat-value">$' . number_format($promedioIngreso, 2) . '</span>
+        </div>
+    </div>
+    
+    <h2>Top 5 Psicologos mas Productivos</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Psicologo</th>
+                <th>Especialidad</th>
+                <th class="text-center">Total Citas</th>
+                <th class="text-right">Ingresos</th>
+            </tr>
+        </thead>
+        <tbody>';
+            
+            $pos = 1;
+            foreach($topPsicologos as $nombre => $data) {
                 $html .= '<tr>
-                    <td>' . $c['id'] . '</td>
-                    <td>' . date('d/m/Y H:i', strtotime($c['fecha_hora'])) . '</td>
-                    <td>' . htmlspecialchars($c['paciente']) . '</td>
-                    <td>' . htmlspecialchars($c['psicologo']) . '</td>
-                    <td>' . htmlspecialchars($c['especialidad']) . '</td>
-                    <td>' . $c['estado'] . '</td>
-                    <td>$' . number_format($c['monto'], 2) . '</td>
-                </tr>';
+                <td>' . $pos++ . '</td>
+                <td>' . htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8') . '</td>
+                <td>' . htmlspecialchars($data['especialidad'], ENT_QUOTES, 'UTF-8') . '</td>
+                <td class="text-center">' . $data['total'] . '</td>
+                <td class="text-right">$' . number_format($data['ingresos'], 2) . '</td>
+            </tr>';
             }
             
-            $html .= '</tbody></table></body></html>';
+            $html .= '</tbody>
+    </table>
+    
+    <div class="page-break"></div>
+    
+    <h2>Detalle Completo de Citas</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Fecha</th>
+                <th>Paciente</th>
+                <th>Psicologo</th>
+                <th>Especialidad</th>
+                <th class="text-center">Estado</th>
+                <th class="text-right">Monto</th>
+            </tr>
+        </thead>
+        <tbody>';
             
-            PDFHelper::generarPDF($html, 'estadisticas_' . $anio . ($mes ? '_' . $mes : ''), 'landscape', 'letter', true);
+            foreach($citas as $c) {
+                $paciente = htmlspecialchars($c['paciente'] ?? 'N/A', ENT_QUOTES, 'UTF-8');
+                $psicologo = htmlspecialchars($c['psicologo'] ?? 'N/A', ENT_QUOTES, 'UTF-8');
+                $especialidad = htmlspecialchars($c['especialidad'] ?? 'N/A', ENT_QUOTES, 'UTF-8');
+                $estado = $c['estado'] ?? 'pendiente';
+                $badgeClass = $estado === 'realizada' ? 'badge-success' : ($estado === 'pendiente' ? 'badge-warning' : 'badge-danger');
+                
+                $html .= '<tr>
+                <td>' . (int)$c['id'] . '</td>
+                <td>' . date('d/m/Y H:i', strtotime($c['fecha_hora'])) . '</td>
+                <td>' . $paciente . '</td>
+                <td>' . $psicologo . '</td>
+                <td>' . $especialidad . '</td>
+                <td class="text-center"><span class="badge ' . $badgeClass . '">' . ucfirst($estado) . '</span></td>
+                <td class="text-right">$' . number_format((float)$c['monto'], 2) . '</td>
+            </tr>';
+            }
+            
+            $html .= '</tbody>
+    </table>
+    
+    <div class="footer">
+        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial<br>
+        Pagina 1 de 1 - ' . $totalCitas . ' registros totales
+    </div>
+</body>
+</html>';
+            
+            PDFHelper::generarPDF($html, 'Reporte_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
             
         } else if($formato === 'excel') {
             // HOJA 1: Resumen General
