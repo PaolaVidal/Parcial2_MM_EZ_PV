@@ -236,9 +236,36 @@ class AdminController {
         $psModel   = new Psicologo();
         // JSON fetch (AJAX list)
         if(isset($_GET['ajax']) && $_GET['ajax']==='list'){
+            ob_clean(); // Limpiar cualquier salida previa
             header('Content-Type: application/json');
-            echo json_encode(['citas'=>$this->filtrarCitasAdmin($citaModel)]);
-            return;
+            try {
+                $citas = $this->filtrarCitasAdmin($citaModel);
+                echo json_encode(['citas'=>$citas]);
+                exit;
+            } catch(Exception $e) {
+                echo json_encode(['error' => 'Error al cargar citas: ' . $e->getMessage(), 'citas' => []]);
+                exit;
+            }
+        }
+        // AJAX evaluaciones - obtener evaluaciones de una cita
+        if(isset($_GET['ajax']) && $_GET['ajax']==='evaluaciones'){
+            ob_clean(); // Limpiar cualquier salida previa
+            header('Content-Type: application/json');
+            try {
+                $idCita = (int)($_GET['id_cita'] ?? 0);
+                if(!$idCita){
+                    echo json_encode(['error' => 'ID de cita no válido']);
+                    exit;
+                }
+                require_once __DIR__ . '/../Models/Evaluacion.php';
+                $evalModel = new Evaluacion();
+                $evaluaciones = $evalModel->obtenerPorCita($idCita);
+                echo json_encode(['evaluaciones' => $evaluaciones]);
+                exit;
+            } catch(Exception $e) {
+                echo json_encode(['error' => 'Error al cargar evaluaciones: ' . $e->getMessage()]);
+                exit;
+            }
         }
         // AJAX slots para un psicólogo destino en fecha dada (para reasignar)
         if(isset($_GET['ajax']) && $_GET['ajax']==='slots'){
@@ -328,7 +355,21 @@ class AdminController {
                 switch($op){
                     case 'cancelar':
                         $motivo = trim($_POST['motivo'] ?? '');
-                        if($id && $motivo){ $citaModel->cancelar($id,$motivo); }
+                        if($id && $motivo){
+                            // Verificar que no tenga evaluaciones
+                            require_once __DIR__ . '/../Models/Evaluacion.php';
+                            $evalModel = new Evaluacion();
+                            $countEval = $evalModel->contarPorCita($id);
+                            
+                            if($countEval > 0){
+                                throw new Exception('No se puede cancelar una cita que ya tiene evaluaciones registradas.');
+                            }
+                            
+                            // Cancelar y liberar horario
+                            $pdo = $citaModel->pdo();
+                            $st = $pdo->prepare("UPDATE Cita SET estado_cita='cancelada', estado='inactivo', motivo_consulta=CONCAT(motivo_consulta, '\n[CANCELADA] ', ?) WHERE id=?");
+                            $st->execute([$motivo, $id]);
+                        }
                         break;
                     case 'reprogramar':
                         $fh = trim($_POST['fecha_hora'] ?? '');
@@ -383,7 +424,9 @@ class AdminController {
         $fecha  = $_GET['fecha'] ?? '';
         $texto  = strtolower(trim($_GET['texto'] ?? ''));
         $ps     = (int)($_GET['ps'] ?? 0);
-        return array_values(array_filter($base,function($c) use($estado,$fecha,$texto,$ps){
+        
+        // Filtrar citas
+        $citasFiltradas = array_values(array_filter($base,function($c) use($estado,$fecha,$texto,$ps){
             if($estado && $c['estado_cita']!==$estado) return false;
             if($fecha && substr($c['fecha_hora'],0,10)!==$fecha) return false;
             if($ps && (int)$c['id_psicologo']!==$ps) return false;
@@ -396,6 +439,15 @@ class AdminController {
             }
             return true;
         }));
+        
+        // Agregar conteo de evaluaciones a cada cita
+        require_once __DIR__ . '/../Models/Evaluacion.php';
+        $evalModel = new Evaluacion();
+        foreach($citasFiltradas as $key => $cita){
+            $citasFiltradas[$key]['count_evaluaciones'] = $evalModel->contarPorCita((int)$cita['id']);
+        }
+        
+        return $citasFiltradas;
     }
 
     private function psicologoDisponible(Cita $citaModel,int $idPs,string $fechaHora,int $excluirId=0): bool {

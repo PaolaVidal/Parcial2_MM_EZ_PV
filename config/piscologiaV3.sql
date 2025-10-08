@@ -16,18 +16,31 @@ CREATE TABLE Usuario (
     estado ENUM('activo', 'inactivo') DEFAULT 'activo'
 );
 
+
+-- ============================
+-- 2. ESPECIALIDADES
+-- ============================
+CREATE TABLE Especialidad (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    descripcion TEXT,
+    estado ENUM('activo', 'inactivo') DEFAULT 'activo'
+);
+
 -- ============================
 -- 2. PSICÓLOGOS
 -- ============================
 CREATE TABLE Psicologo (
     id INT AUTO_INCREMENT PRIMARY KEY,
     id_usuario INT NOT NULL,
-    especialidad VARCHAR(100),
+    id_especialidad INT NOT NULL,
     experiencia TEXT,
     horario TEXT,
     estado ENUM('activo', 'inactivo') DEFAULT 'activo',
     CONSTRAINT fk_psicologo_usuario FOREIGN KEY (id_usuario)
-        REFERENCES Usuario(id) ON UPDATE CASCADE ON DELETE CASCADE
+        REFERENCES Usuario(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_psicologo_especialidad FOREIGN KEY (id_especialidad)
+        REFERENCES Especialidad(id) ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
 -- ============================

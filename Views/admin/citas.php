@@ -45,12 +45,30 @@
 <div class="table-responsive">
   <table class="table table-sm table-striped align-middle" id="tablaCitasAdmin">
     <thead class="table-light"><tr>
-      <th>ID</th><th>Paciente</th><th>Psicólogo</th><th>Fecha/Hora</th><th>Estado</th><th>Motivo</th><th>Acciones</th>
+      <th>ID</th><th>Paciente</th><th>Psicólogo</th><th>Fecha/Hora</th><th>Estado</th><th>Evaluaciones</th><th>Motivo</th><th>Acciones</th>
     </tr></thead>
     <tbody></tbody>
   </table>
 </div>
 <div id="citasVacio" class="alert alert-info py-2 d-none">Sin resultados con los filtros actuales.</div>
+
+<!-- Modal Ver Evaluaciones -->
+<div class="modal fade" id="verEvaluacionesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Evaluaciones de la Cita <span id="evalCitaId"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="evaluacionesContent">
+        <div class="text-center py-3">
+          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+          <p class="small text-muted mt-2">Cargando evaluaciones...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Modal Reasignar -->
 <div class="modal fade" id="reasignarModal" tabindex="-1" aria-hidden="true">
@@ -122,30 +140,89 @@ function fetchCitas(){
   const t=document.getElementById('fTexto').value.trim(); if(t) p.append('texto',t);
   const ps=document.getElementById('fPs').value.trim(); if(ps) p.append('ps',ps);
   p.append('ajax','list');
-  return fetch(BASE+'index.php?url=admin/citas&'+p.toString()).then(r=>r.json()).then(j=>{ datosCitas=j.citas||[]; });
+  return fetch(BASE+'index.php?url=admin/citas&'+p.toString())
+    .then(r => {
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.text();
+    })
+    .then(txt => {
+      try {
+        const j = JSON.parse(txt);
+        if(j.error){
+          console.error('Error del servidor:', j.error);
+          throw new Error(j.error);
+        }
+        datosCitas = j.citas || [];
+      } catch(e) {
+        if(e instanceof SyntaxError) {
+          console.error('Respuesta no JSON:', txt.substring(0, 500));
+          throw new Error('El servidor no devolvió JSON válido');
+        }
+        throw e;
+      }
+    });
 }
 function formatearEstado(est){
-  const map={pendiente:'warning text-dark',realizada:'success',cancelada:'secondary'}; const cls = map[est]||'light';
-  return `<span class="badge bg-${cls}">${est}</span>`;
+  const map={
+    pendiente:'warning text-dark',
+    realizada:'success',
+    cancelada:'danger'
+  }; 
+  const cls = map[est]||'secondary';
+  const texto = est.charAt(0).toUpperCase() + est.slice(1);
+  return `<span class="badge bg-${cls}">${texto}</span>`;
 }
 function renderTabla(){
   const tb=document.querySelector('#tablaCitasAdmin tbody'); tb.innerHTML='';
   if(!datosCitas.length){ document.getElementById('citasVacio').classList.remove('d-none'); return; }
   document.getElementById('citasVacio').classList.add('d-none');
-  datosCitas.forEach(c=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${c.id}</td>
+  datosCitas.forEach(c=>{ 
+    const tr=document.createElement('tr'); 
+    const countEval = c.count_evaluaciones || 0;
+    const evalHtml = countEval > 0 
+      ? `<button class='btn btn-sm btn-outline-info' onclick='verEvaluaciones(${c.id})' title='Ver evaluaciones'><i class='fas fa-clipboard-check'></i> ${countEval}</button>`
+      : `<span class='text-muted small'>0</span>`;
+    
+    tr.innerHTML=`<td>${c.id}</td>
       <td>${c.id_paciente}</td><td>${c.id_psicologo}</td><td>${c.fecha_hora}</td><td>${formatearEstado(c.estado_cita)}</td>
+      <td class='text-center'>${evalHtml}</td>
       <td class='small' style='max-width:200px'>${(c.motivo_consulta||'').replace(/</g,'&lt;')}</td>
-      <td class='text-nowrap'>${accionesHtml(c)}</td>`; tb.appendChild(tr); });
+      <td class='text-nowrap'>${accionesHtml(c)}</td>`; 
+    tb.appendChild(tr); 
+  });
 }
 function accionesHtml(c){
-  const btnCancel = `<button class='btn btn-outline-danger btn-sm me-1' onclick='abrirCancelar(${c.id})' title='Cancelar'><i class="fas fa-ban"></i></button>`;
-  let btnReasig; if(c.estado_cita==='realizada' || c.estado_cita==='cancelada'){
-    btnReasig = `<button class='btn btn-outline-secondary btn-sm' disabled title='No disponible'><i class="fas fa-exchange-alt"></i></button>`;
-  } else { btnReasig = `<button class='btn btn-outline-secondary btn-sm' onclick='abrirReasignar(${c.id},${c.id_psicologo},"${c.fecha_hora}")' title='Reasignar'><i class="fas fa-exchange-alt"></i></button>`; }
-  return btnCancel+btnReasig;
+  const countEval = c.count_evaluaciones || 0;
+  let html = '';
+  
+  // Botón Cancelar (solo si es pendiente y sin evaluaciones)
+  if(c.estado_cita === 'pendiente'){
+    if(countEval > 0){
+      html += `<span class='badge bg-warning text-dark me-1' title='Tiene ${countEval} evaluaciones'><i class="fas fa-lock"></i></span>`;
+    } else {
+      html += `<button class='btn btn-outline-danger btn-sm me-1' onclick='abrirCancelar(${c.id})' title='Cancelar'><i class="fas fa-ban"></i></button>`;
+    }
+  }
+  
+  // Botón Reasignar
+  if(c.estado_cita==='realizada' || c.estado_cita==='cancelada'){
+    html += `<button class='btn btn-outline-secondary btn-sm' disabled title='No disponible'><i class="fas fa-exchange-alt"></i></button>`;
+  } else { 
+    html += `<button class='btn btn-outline-secondary btn-sm' onclick='abrirReasignar(${c.id},${c.id_psicologo},"${c.fecha_hora}")' title='Reasignar'><i class="fas fa-exchange-alt"></i></button>`; 
+  }
+  
+  return html;
 }
-function limpiarFiltros(){ ['fEstado','fFecha','fTexto','fPs'].forEach(id=>document.getElementById(id).value=''); refrescarCitas(); }
-function refrescarCitas(){ fetchCitas().then(renderTabla).catch(()=>alert('Error cargando citas')); }
+function limpiarFiltros(){ 
+  ['fEstado','fFecha','fTexto','fPs'].forEach(id=>document.getElementById(id).value=''); 
+  refrescarCitas(); 
+}
+function refrescarCitas(){ 
+  fetchCitas().then(renderTabla).catch(err=>{
+    console.error('Error al cargar citas:', err);
+    alert('Error cargando citas');
+  }); 
+}
 function abrirReasignar(id,actual,fh){
   document.getElementById('reasignarId').textContent='#'+id;
   document.getElementById('reasignarInputId').value=id;
@@ -214,5 +291,83 @@ function selSlotReasignar(h){ document.getElementById('reasignarHora').value=h; 
 function abrirCancelar(id){ document.getElementById('cancelarId').textContent='#'+id; document.getElementById('cancelarInputId').value=id; bootstrap.Modal.getOrCreateInstance(document.getElementById('cancelarModal')).show(); }
 function validarReasignar(){ const ps=document.getElementById('reasignarSelectPs').value; const fecha=document.getElementById('reasignarFecha').value; const hora=document.getElementById('reasignarHora').value; if(!ps||!fecha||!hora){ alert('Selecciona psicólogo, fecha y hora.'); return false;} document.getElementById('reasignarFechaHoraFinal').value=fecha+' '+hora+':00'; return confirm('Confirmar reasignación?'); }
 function confirmarCancelar(){ return confirm('Cancelar definitivamente?'); }
+
+// Ver evaluaciones de una cita
+function verEvaluaciones(idCita){
+  document.getElementById('evalCitaId').textContent = '#' + idCita;
+  const content = document.getElementById('evaluacionesContent');
+  content.innerHTML = `<div class="text-center py-3">
+    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+    <p class="small text-muted mt-2">Cargando evaluaciones...</p>
+  </div>`;
+  
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('verEvaluacionesModal')).show();
+  
+  // Cargar evaluaciones vía AJAX
+  fetch(BASE + 'index.php?url=admin/citas&ajax=evaluaciones&id_cita=' + idCita)
+    .then(r => {
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.text();
+    })
+    .then(txt => {
+      console.log('Respuesta evaluaciones:', txt.substring(0, 200));
+      try {
+        const data = JSON.parse(txt);
+        
+        if(data.error){
+          content.innerHTML = `<div class="alert alert-danger py-2">${data.error}</div>`;
+          return;
+        }
+        
+        if(!data.evaluaciones || data.evaluaciones.length === 0){
+          content.innerHTML = `<div class="alert alert-info py-2">Esta cita no tiene evaluaciones registradas.</div>`;
+          return;
+        }
+        
+        let html = '<div class="list-group">';
+        data.evaluaciones.forEach((ev, idx) => {
+        const fecha = ev.fecha_creacion ? new Date(ev.fecha_creacion).toLocaleString('es-ES') : 'N/A';
+        html += `
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <h6 class="mb-0">Evaluación ${idx + 1}</h6>
+              <span class="badge bg-info">${fecha}</span>
+            </div>
+            <div class="row">
+              <div class="col-md-4">
+                <strong>Estado Emocional:</strong>
+                <div class="progress mt-1" style="height: 25px;">
+                  <div class="progress-bar ${ev.estado_emocional >= 7 ? 'bg-success' : ev.estado_emocional >= 4 ? 'bg-warning' : 'bg-danger'}" 
+                       style="width: ${ev.estado_emocional * 10}%">
+                    ${ev.estado_emocional}/10
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-8">
+                <strong>Comentarios:</strong>
+                <p class="small mb-0 mt-1">${(ev.comentarios || 'Sin comentarios').replace(/</g, '&lt;')}</p>
+              </div>
+            </div>
+          </div>`;
+        });
+        html += '</div>';
+        
+        content.innerHTML = html;
+        
+      } catch(e) {
+        if(e instanceof SyntaxError) {
+          console.error('Respuesta no JSON:', txt.substring(0, 500));
+          content.innerHTML = `<div class="alert alert-danger py-2">Error: El servidor no devolvió JSON válido</div>`;
+        } else {
+          throw e;
+        }
+      }
+    })
+    .catch(err => {
+      console.error('Error al cargar evaluaciones:', err);
+      content.innerHTML = `<div class="alert alert-danger py-2">Error al cargar evaluaciones: ${err.message}</div>`;
+    });
+}
+
 document.addEventListener('DOMContentLoaded', renderTabla);
 </script>
