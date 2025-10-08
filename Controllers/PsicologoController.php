@@ -642,7 +642,7 @@ class PsicologoController {
 
     private function contarPacientesUnicos(int $idPsico): int {
         $db = (new Cita())->pdo();
-        $st = $db->prepare("SELECT COUNT(DISTINCT id_paciente) FROM Cita WHERE id_psicologo=? AND estado='activo'");
+        $st = $db->prepare("SELECT COUNT(DISTINCT id_paciente) FROM Cita WHERE id_psicologo=?");
         $st->execute([$idPsico]);
         return (int)$st->fetchColumn();
     }
@@ -652,7 +652,7 @@ class PsicologoController {
         $st = $db->prepare("
             SELECT DATE_FORMAT(fecha_hora, '%Y-%m') as mes, COUNT(*) as total 
             FROM Cita 
-            WHERE id_psicologo=? AND fecha_hora >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND estado='activo'
+            WHERE id_psicologo=? AND fecha_hora >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
             GROUP BY mes 
             ORDER BY mes ASC
         ");
@@ -662,7 +662,7 @@ class PsicologoController {
 
     private function citasPorEstado(int $idPsico): array {
         $db = (new Cita())->pdo();
-        $st = $db->prepare("SELECT estado_cita, COUNT(*) as total FROM Cita WHERE id_psicologo=? AND estado='activo' GROUP BY estado_cita");
+        $st = $db->prepare("SELECT estado_cita, COUNT(*) as total FROM Cita WHERE id_psicologo=? GROUP BY estado_cita");
         $st->execute([$idPsico]);
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -684,10 +684,10 @@ class PsicologoController {
     private function pacientesMasFrecuentes(int $idPsico, int $limit): array {
         $db = (new Cita())->pdo();
         $st = $db->prepare("
-            SELECT p.nombre, p.dui, COUNT(*) as total_citas 
+            SELECT p.nombre, p.dui, COUNT(*) as total_citas, c.id_paciente
             FROM Cita c 
             JOIN Paciente p ON p.id=c.id_paciente 
-            WHERE c.id_psicologo=? AND c.estado='activo'
+            WHERE c.id_psicologo=?
             GROUP BY c.id_paciente 
             ORDER BY total_citas DESC 
             LIMIT ?
@@ -703,7 +703,7 @@ class PsicologoController {
         $st = $db->prepare("
             SELECT HOUR(fecha_hora) as hora, COUNT(*) as total 
             FROM Cita 
-            WHERE id_psicologo=? AND estado='activo' AND estado_cita='realizada'
+            WHERE id_psicologo=? AND estado_cita='realizada'
             GROUP BY hora 
             ORDER BY total DESC 
             LIMIT 5
@@ -714,13 +714,13 @@ class PsicologoController {
 
     private function tasaCancelacion(int $idPsico): float {
         $db = (new Cita())->pdo();
-        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado='activo'");
+        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=?");
         $st->execute([$idPsico]);
         $total = (int)$st->fetchColumn();
         
         if($total === 0) return 0.0;
         
-        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado_cita='cancelada' AND estado='activo'");
+        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado_cita='cancelada'");
         $st->execute([$idPsico]);
         $canceladas = (int)$st->fetchColumn();
         
@@ -746,7 +746,7 @@ class PsicologoController {
 
     private function countCitasTotal(int $idPsico): int {
         $db = (new Cita())->pdo();
-        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado='activo'");
+        $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=?");
         $st->execute([$idPsico]);
         return (int)$st->fetchColumn();
     }
