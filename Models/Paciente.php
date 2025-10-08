@@ -158,4 +158,38 @@ class Paciente extends BaseModel {
         $r = $st->fetch(PDO::FETCH_ASSOC);
         return $r ?: null;
     }
+    
+    /**
+     * Actualiza un campo específico de un paciente (usado en solicitudes de cambio)
+     * @param int $id ID del paciente
+     * @param string $campo Nombre del campo a actualizar
+     * @param string $valor Nuevo valor
+     * @return bool True si se actualizó correctamente
+     */
+    public function actualizarCampo(int $id, string $campo, string $valor): bool {
+        // Mapeo de nombres de campos permitidos
+        $camposPermitidos = [
+            'nombre' => $this->colNombre,
+            'email' => $this->colEmail,
+            'telefono' => $this->colTelefono,
+            'direccion' => $this->colDireccion,
+            'fecha_nacimiento' => $this->colFechaNac,
+            'genero' => $this->colGenero
+        ];
+        
+        // Verificar que el campo sea válido
+        if (!isset($camposPermitidos[$campo])) {
+            return false;
+        }
+        
+        $columna = $camposPermitidos[$campo];
+        if (empty($columna)) {
+            return false;
+        }
+        
+        // Actualizar el campo
+        $sql = "UPDATE {$this->tabla} SET {$columna} = :valor WHERE id = :id";
+        $st = $this->db->prepare($sql);
+        return $st->execute([':valor' => $valor, ':id' => $id]);
+    }
 }

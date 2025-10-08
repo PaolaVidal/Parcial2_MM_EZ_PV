@@ -97,11 +97,13 @@ class PublicController {
                 $msg = 'Completa los campos.';
             } else {
                 (new SolicitudCambio())->crear($paciente['id'], $campo, $valor);
-                $msg='Solicitud enviada.';
+                $msg='Solicitud enviada exitosamente. Será revisada por un administrador.';
                 $ok=true;
             }
         }
-        $this->render('solicitud', ['msg'=>$msg,'ok'=>$ok]);
+        // Obtener historial de solicitudes del paciente
+        $historial = (new SolicitudCambio())->listarPorPaciente($paciente['id']);
+        $this->render('solicitud', ['msg'=>$msg,'ok'=>$ok,'historial'=>$historial]);
     }
 
     public function salir(): void {

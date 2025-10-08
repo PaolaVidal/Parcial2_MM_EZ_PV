@@ -33,4 +33,13 @@ class SolicitudCambio extends BaseModel {
         $st = $this->db->prepare("UPDATE SolicitudCambio SET estado=? WHERE id=?");
         return $st->execute([$estado,$id]);
     }
+    
+    public function listarPorPaciente(int $idPaciente): array {
+        $sql = "SELECT * FROM SolicitudCambio 
+                WHERE id_paciente = ? 
+                ORDER BY fecha DESC";
+        $st = $this->db->prepare($sql);
+        $st->execute([$idPaciente]);
+        return $st->fetchAll() ?: [];
+    }
 }
