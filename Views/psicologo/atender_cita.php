@@ -126,14 +126,20 @@
       <!-- Botón de finalizar -->
       <div class="card shadow-sm border-success">
         <div class="card-body text-center">
-          <p class="mb-2 small text-muted">
+          <p class="mb-2 small text-muted" id="textoFinalizar">
             <i class="fas fa-info-circle me-1"></i>
-            Agrega al menos una evaluación y luego finaliza la cita
+            <span id="msgSinEval" <?= count($evaluaciones) > 0 ? 'style="display:none"' : '' ?>>
+              Agrega al menos una evaluación para poder finalizar
+            </span>
+            <span id="msgConEval" <?= count($evaluaciones) === 0 ? 'style="display:none"' : '' ?>>
+              Ya tienes <?= count($evaluaciones) ?> evaluación(es). Puedes finalizar la cita.
+            </span>
           </p>
           <form method="post" action="<?= RUTA ?>index.php?url=psicologo/finalizarCita" 
                 onsubmit="return confirm('¿Confirmar que la cita está finalizada? No podrás agregar más evaluaciones.')">
             <input type="hidden" name="id_cita" value="<?= $cita['id'] ?>">
-            <button type="submit" class="btn btn-success w-100">
+            <button type="submit" id="btnFinalizarCita" class="btn btn-success w-100" 
+                    <?= count($evaluaciones) === 0 ? 'disabled' : '' ?>>
               <i class="fas fa-check-circle me-1"></i>Finalizar Cita
             </button>
           </form>
@@ -346,11 +352,35 @@ function agregarEvaluacionALista(eval){
   const count = document.querySelectorAll('.eval-item').length;
   document.getElementById('countEval').textContent = count;
   
+  // Habilitar botón finalizar y actualizar mensaje
+  actualizarBotonFinalizar(count);
+  
   // Scroll suave hacia la nueva evaluación
   setTimeout(() => {
     const items = document.querySelectorAll('.eval-item');
     items[items.length - 1].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, 100);
+}
+
+function actualizarBotonFinalizar(count){
+  const btnFinalizar = document.getElementById('btnFinalizarCita');
+  const msgSinEval = document.getElementById('msgSinEval');
+  const msgConEval = document.getElementById('msgConEval');
+  
+  if(btnFinalizar){
+    if(count > 0){
+      btnFinalizar.disabled = false;
+      if(msgSinEval) msgSinEval.style.display = 'none';
+      if(msgConEval){
+        msgConEval.style.display = 'inline';
+        msgConEval.textContent = `Ya tienes ${count} evaluación${count > 1 ? 'es' : ''}. Puedes finalizar la cita.`;
+      }
+    } else {
+      btnFinalizar.disabled = true;
+      if(msgSinEval) msgSinEval.style.display = 'inline';
+      if(msgConEval) msgConEval.style.display = 'none';
+    }
+  }
 }
 
 function escapeHtml(text) {

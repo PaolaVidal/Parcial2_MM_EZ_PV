@@ -145,10 +145,18 @@ class PsicologoController {
     $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         $pacM = new Paciente();
+        $evalM = new Evaluacion();
     $list = $citaM->listarPsicologo($idPsico);
     // Unificar y ordenar por fecha_hora ASC manteniendo estado_cita original
     $todas = array_merge($list['pendientes'],$list['realizadas']);
     usort($todas, function($a,$b){ return strcmp($a['fecha_hora'],$b['fecha_hora']); });
+    
+    // Agregar conteo de evaluaciones a cada cita
+    foreach($todas as &$cita){
+        $cita['count_evaluaciones'] = $evalM->contarPorCita((int)$cita['id']);
+    }
+    unset($cita); // Limpiar referencia
+    
     // Repartir de nuevo en pendientes/realizadas ya ordenadas si se necesita en otras partes
     $list['pendientes'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='pendiente'));
     $list['realizadas'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='realizada'));
@@ -297,7 +305,10 @@ class PsicologoController {
                     $pac = $pacM->getById((int)$cita['id_paciente']);
                     $cita['nombre_paciente'] = $pac['nombre'] ?? 'Desconocido';
                     
-                    $res=['ok'=>true,'cita'=>$cita,'msg'=>'Cita encontrada'];
+                    // Determinar acción según estado
+                    $accion = $cita['estado_cita'] === 'pendiente' ? 'atender' : 'ver';
+                    
+                    $res=['ok'=>true,'cita'=>$cita,'accion'=>$accion,'msg'=>'Cita encontrada'];
                 }
             }
         }
@@ -389,13 +400,34 @@ class PsicologoController {
         }
         
         $evalM = new Evaluacion();
-        $idEval = $evalM->crear($idCita, $estadoEmocional, $comentarios);
-        
-        if($idEval){
-            $evaluacion = $evalM->obtener($idEval);
-            echo json_encode(['ok'=>true,'msg'=>'Evaluación guardada','evaluacion'=>$evaluacion]);
-        } else {
-            echo json_encode(['ok'=>false,'msg'=>'Error al guardar']);
+        try {
+            $idEval = $evalM->crear($idCita, $estadoEmocional, $comentarios);
+            
+            if($idEval){
+                // Siempre usar array manual para evitar problemas de timing con obtener()
+                $evaluacion = [
+                    'id' => $idEval,
+                    'id_cita' => $idCita,
+                    'estado_emocional' => $estadoEmocional,
+                    'comentarios' => $comentarios,
+                    'estado' => 'activo'
+                ];
+                
+                // Contar evaluaciones actuales
+                $totalEval = $evalM->contarPorCita($idCita);
+                
+                echo json_encode([
+                    'ok'=>true,
+                    'msg'=>'Evaluación guardada correctamente',
+                    'evaluacion'=>$evaluacion,
+                    'total'=>$totalEval
+                ]);
+            } else {
+                echo json_encode(['ok'=>false,'msg'=>'Error al guardar evaluación']);
+            }
+        } catch(Exception $e) {
+            error_log('Error en guardarEvaluacion: ' . $e->getMessage());
+            echo json_encode(['ok'=>false,'msg'=>'Error: ' . $e->getMessage()]);
         }
     }
 
@@ -432,6 +464,51 @@ class PsicologoController {
             header('Location: ' . RUTA . 'index.php?url=psicologo/citas&ok=finalizada');
         } else {
             header('Location: ' . RUTA . 'index.php?url=psicologo/atenderCita&id='.$idCita.'&err=update');
+        }
+    }
+
+    // Cancelar cita
+    public function cancelarCita(): void {
+        $this->requirePsicologo();
+        $idCita = (int)($_POST['id_cita'] ?? 0);
+        $idPsico = $this->currentPsicologoId();
+        
+        $citaM = new Cita();
+        $cita = $citaM->obtener($idCita);
+        
+        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=nf');
+            return;
+        }
+        
+        if($cita['estado_cita'] === 'cancelada'){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&msg=ya_cancelada');
+            return;
+        }
+        
+        if($cita['estado_cita'] === 'realizada'){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=ya_realizada');
+            return;
+        }
+        
+        // ✅ NUEVA VALIDACIÓN: No permitir cancelar si ya tiene evaluaciones
+        $evalM = new Evaluacion();
+        $countEval = $evalM->contarPorCita($idCita);
+        
+        if($countEval > 0){
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=con_evaluaciones');
+            return;
+        }
+        
+        // Actualizar estado a cancelada
+        try {
+            $db = $citaM->pdo();
+            $st = $db->prepare('UPDATE Cita SET estado_cita = \'cancelada\' WHERE id = ?');
+            $st->execute([$idCita]);
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&ok=cancelada');
+        } catch(Exception $e) {
+            error_log('Error cancelando cita: ' . $e->getMessage());
+            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=cancel');
         }
     }
 

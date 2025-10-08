@@ -1,5 +1,36 @@
 <h2>Citas del Psicólogo</h2>
-<?php if(isset($_GET['ok'])): ?><div class="alert alert-success">Operación realizada correctamente.</div><?php endif; ?>
+
+<!-- Mensajes de éxito -->
+<?php if(isset($_GET['ok'])): ?>
+  <div class="alert alert-success alert-dismissible fade show">
+    <i class="fas fa-check-circle me-1"></i>
+    <?php
+      $okMsgs = [
+        'finalizada' => 'Cita finalizada correctamente',
+        'cancelada' => 'Cita cancelada correctamente',
+        'pagado' => 'Pago registrado correctamente'
+      ];
+      echo $okMsgs[$_GET['ok']] ?? 'Operación realizada correctamente';
+    ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+<?php endif; ?>
+
+<!-- Mensajes informativos -->
+<?php if(isset($_GET['msg'])): ?>
+  <div class="alert alert-info alert-dismissible fade show">
+    <i class="fas fa-info-circle me-1"></i>
+    <?php
+      $infoMsgs = [
+        'ya_cancelada' => 'Esta cita ya está cancelada'
+      ];
+      echo $infoMsgs[$_GET['msg']] ?? htmlspecialchars($_GET['msg']);
+    ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+<?php endif; ?>
+
+<!-- Mensajes de error -->
 <?php if(isset($_GET['err'])): 
   $map = [
     'datos'=>'Datos incompletos',
@@ -8,13 +39,25 @@
     'minutos'=>'Los minutos deben ser 00 o 30',
     'pasado'=>'La hora seleccionada ya pasó',
     'horario'=>'Fuera del horario permitido (08:00-17:00)',
-  'fuera_horario'=>'La hora seleccionada no está dentro de tu horario configurado',
+    'fuera_horario'=>'La hora seleccionada no está dentro de tu horario configurado',
     'ocupado'=>'Ya existe una cita en ese horario',
-    'ex'=>'Error interno, reintenta' 
+    'ex'=>'Error interno, reintenta',
+    'nf'=>'Cita no encontrada',
+    'ya_realizada'=>'No se puede cancelar una cita que ya está realizada',
+    'cancel'=>'Error al cancelar la cita',
+    'con_evaluaciones'=>'No se puede cancelar una cita que ya tiene evaluaciones registradas. Si deseas terminar la atención, usa el botón "Finalizar Cita".'
   ];
   $msg = $map[$_GET['err']] ?? $_GET['err'];
 ?>
-  <div class="alert alert-danger">Error: <?= htmlspecialchars($msg) ?><?php if($_GET['err']==='ex' && !empty($_SESSION['crear_cita_error'])){ echo '<br><small class="text-muted">Detalle: '.htmlspecialchars($_SESSION['crear_cita_error']).'</small>'; unset($_SESSION['crear_cita_error']); } ?></div>
+  <div class="alert alert-danger alert-dismissible fade show">
+    <i class="fas fa-exclamation-circle me-1"></i>
+    Error: <?= htmlspecialchars($msg) ?>
+    <?php if($_GET['err']==='ex' && !empty($_SESSION['crear_cita_error'])){ 
+      echo '<br><small class="text-muted">Detalle: '.htmlspecialchars($_SESSION['crear_cita_error']).'</small>'; 
+      unset($_SESSION['crear_cita_error']); 
+    } ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
 <?php endif; ?>
 <div class="card mb-4">
   <div class="card-header">Crear nueva cita</div>
@@ -66,6 +109,7 @@
       <option value="">Todos</option>
       <option value="pendiente">Pendiente</option>
       <option value="realizada">Realizada</option>
+      <option value="cancelada">Cancelada</option>
     </select>
   </div>
   <div class="col-md-3">
@@ -109,37 +153,62 @@
           <?php endif; ?>
         </td>
         <td>
-          <!-- Botón Atender/Ver Cita -->
-          <?php if($c['estado_cita'] === 'pendiente'): ?>
-            <a href="<?= RUTA ?>index.php?url=psicologo/atenderCita&id=<?= (int)$c['id'] ?>" 
-               class="btn btn-sm btn-primary me-1" title="Atender cita">
-              <i class="fas fa-user-md"></i> Atender
-            </a>
-          <?php elseif($c['estado_cita'] === 'realizada'): ?>
-            <a href="<?= RUTA ?>index.php?url=psicologo/atenderCita&id=<?= (int)$c['id'] ?>" 
-               class="btn btn-sm btn-info me-1" title="Ver detalles">
-              <i class="fas fa-eye"></i> Ver
-            </a>
-          <?php endif; ?>
-          
-          <!-- Botón Pagar -->
-          <?php if($c['estado_cita'] === 'realizada' && (!$p || $p['estado_pago']!=='pagado')): ?>
-            <form method="post" action="<?= RUTA ?>index.php?url=psicologo/pagar" style="display:inline" onsubmit="return confirm('Marcar pagado?');">
-              <input type="hidden" name="id_cita" value="<?= (int)$c['id'] ?>">
-              <button class="btn btn-sm btn-success" title="Registrar pago">
-                <i class="fas fa-dollar-sign"></i> Pagar
-              </button>
-            </form>
-          <?php elseif($p && $p['estado_pago']==='pagado'): ?>
-            <?php 
-              $ticketM = new TicketPago();
-              $ticket = $ticketM->obtenerPorPago($p['id']);
-              if($ticket){
-                $rutaTicket = RUTA . 'ticket/ver/'.$ticket['id'];
-                echo '<a class="btn btn-sm btn-outline-secondary" href="'.$rutaTicket.'" title="Ver ticket"><i class="fas fa-ticket-alt"></i> Ticket</a>';
-              }
-            ?>
-          <?php endif; ?>
+          <div class="d-flex flex-wrap gap-1">
+            <!-- Botón Atender/Ver Cita -->
+            <?php if($c['estado_cita'] === 'pendiente'): ?>
+              <a href="<?= RUTA ?>index.php?url=psicologo/atenderCita&id=<?= (int)$c['id'] ?>" 
+                 class="btn btn-sm btn-primary" title="Atender cita">
+                <i class="fas fa-user-md"></i> Atender
+              </a>
+            <?php elseif($c['estado_cita'] === 'realizada'): ?>
+              <a href="<?= RUTA ?>index.php?url=psicologo/atenderCita&id=<?= (int)$c['id'] ?>" 
+                 class="btn btn-sm btn-info" title="Ver detalles">
+                <i class="fas fa-eye"></i> Ver
+              </a>
+            <?php endif; ?>
+            
+            <!-- Botón Cancelar (solo para pendientes SIN evaluaciones) -->
+            <?php if($c['estado_cita'] === 'pendiente'): ?>
+              <?php 
+                $countEval = $c['count_evaluaciones'] ?? 0;
+                if($countEval === 0): 
+              ?>
+                <form method="post" action="<?= RUTA ?>index.php?url=psicologo/cancelarCita" 
+                      style="display:inline" 
+                      onsubmit="return confirm('¿Seguro que deseas cancelar esta cita? Esta acción no se puede deshacer.');">
+                  <input type="hidden" name="id_cita" value="<?= (int)$c['id'] ?>">
+                  <button class="btn btn-sm btn-danger" title="Cancelar cita">
+                    <i class="fas fa-times"></i> Cancelar
+                  </button>
+                </form>
+              <?php else: ?>
+                <span class="badge bg-secondary" title="No se puede cancelar porque ya tiene <?= $countEval ?> evaluación(es)">
+                  <i class="fas fa-clipboard-check"></i> <?= $countEval ?> eval.
+                </span>
+              <?php endif; ?>
+            <?php endif; ?>
+            
+            <!-- Botón Pagar -->
+            <?php if($c['estado_cita'] === 'realizada' && (!$p || $p['estado_pago']!=='pagado')): ?>
+              <form method="post" action="<?= RUTA ?>index.php?url=psicologo/pagar" 
+                    style="display:inline" 
+                    onsubmit="return confirm('¿Marcar como pagado?');">
+                <input type="hidden" name="id_cita" value="<?= (int)$c['id'] ?>">
+                <button class="btn btn-sm btn-success" title="Registrar pago">
+                  <i class="fas fa-dollar-sign"></i> Pagar
+                </button>
+              </form>
+            <?php elseif($p && $p['estado_pago']==='pagado'): ?>
+              <?php 
+                $ticketM = new TicketPago();
+                $ticket = $ticketM->obtenerPorPago($p['id']);
+                if($ticket){
+                  $rutaTicket = RUTA . 'ticket/ver/'.$ticket['id'];
+                  echo '<a class="btn btn-sm btn-outline-secondary" href="'.$rutaTicket.'" title="Ver ticket"><i class="fas fa-ticket-alt"></i> Ticket</a>';
+                }
+              ?>
+            <?php endif; ?>
+          </div>
         </td>
       </tr>
     <?php endforeach; ?>
@@ -472,15 +541,24 @@ function procesarTokenModal(token, desdeCam){
     citaModal = j.cita; 
     renderResultadoScan(j.cita);
     
-    // Mostrar botón "Atender" si no está cancelada
+    const btnAtender = document.getElementById('btnScanAtender');
+    
+    // Mostrar botón con texto según estado
     if(j.cita.estado_cita !== 'cancelada'){
-      document.getElementById('btnScanAtender').classList.remove('d-none');
-      if(j.cita.estado_cita === 'pendiente'){
+      btnAtender.classList.remove('d-none');
+      
+      // Cambiar texto y estilo del botón según acción
+      if(j.accion === 'atender'){
+        btnAtender.innerHTML = '<i class="fas fa-user-md me-1"></i>Atender Cita';
+        btnAtender.className = 'btn btn-primary btn-sm w-100';
         mostrarScanMsg('✓ Cita encontrada. Puedes atenderla.','success');
       } else {
+        btnAtender.innerHTML = '<i class="fas fa-eye me-1"></i>Ver Cita';
+        btnAtender.className = 'btn btn-info btn-sm w-100';
         mostrarScanMsg('Cita ya realizada. Puedes ver detalles.','info');
       }
     } else {
+      btnAtender.classList.add('d-none');
       mostrarScanMsg('Cita cancelada','warning');
     }
     
