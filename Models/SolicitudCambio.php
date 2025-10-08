@@ -42,4 +42,46 @@ class SolicitudCambio extends BaseModel {
         $st->execute([$idPaciente]);
         return $st->fetchAll() ?: [];
     }
+    
+    /**
+     * Lista solicitudes con filtros avanzados
+     * @param string $estado 'todos', 'pendiente', 'aprobado', 'rechazado'
+     * @param string $campo Campo específico o vacío para todos
+     * @param string $buscarDui Búsqueda por DUI
+     * @param string $orden 'ASC' o 'DESC'
+     */
+    public function listarConFiltros(string $estado = 'pendiente', string $campo = '', string $buscarDui = '', string $orden = 'DESC'): array {
+        $sql = "SELECT sc.*, p.dui, p.nombre as paciente_nombre
+                FROM SolicitudCambio sc
+                JOIN Paciente p ON p.id = sc.id_paciente
+                WHERE 1=1";
+        
+        $params = [];
+        
+        // Filtro por estado
+        if($estado !== 'todos' && in_array($estado, ['pendiente', 'aprobado', 'rechazado'])) {
+            $sql .= " AND sc.estado = ?";
+            $params[] = $estado;
+        }
+        
+        // Filtro por campo
+        if(!empty($campo)) {
+            $sql .= " AND sc.campo = ?";
+            $params[] = $campo;
+        }
+        
+        // Búsqueda por DUI
+        if(!empty($buscarDui)) {
+            $sql .= " AND p.dui LIKE ?";
+            $params[] = '%' . $buscarDui . '%';
+        }
+        
+        // Ordenamiento
+        $ordenValido = in_array(strtoupper($orden), ['ASC', 'DESC']) ? strtoupper($orden) : 'DESC';
+        $sql .= " ORDER BY sc.fecha {$ordenValido}";
+        
+        $st = $this->db->prepare($sql);
+        $st->execute($params);
+        return $st->fetchAll() ?: [];
+    }
 }

@@ -527,36 +527,66 @@ class AdminController {
     public function solicitudes(): void {
         $this->requireAdmin();
 
-        // Carga del modelo
-        $fileCambio = __DIR__ . '/../Models/SolicitudCambio.php';
-        $fileAlias  = __DIR__ . '/../Models/Solicitud.php';
-        if(file_exists($fileCambio)) require_once $fileCambio;
-        if(file_exists($fileAlias))  require_once $fileAlias; // por si ya existe
-
-        $modelClass = null;
-        if(class_exists('SolicitudCambio')) {
-            $modelClass = 'SolicitudCambio';
-        } elseif(class_exists('Solicitud')) {
-            $modelClass = 'Solicitud';
+        $model = new SolicitudCambio();
+        
+        // Filtros
+        $estadoFiltro = $_GET['estado'] ?? 'pendiente';
+        $campoFiltro = $_GET['campo'] ?? '';
+        $buscarDui = $_GET['buscar'] ?? '';
+        $orden = $_GET['orden'] ?? 'DESC'; // DESC = más recientes primero
+        
+        // Obtener solicitudes con filtros
+        $solicitudes = $model->listarConFiltros($estadoFiltro, $campoFiltro, $buscarDui, $orden);
+        
+        $this->render('solicitudes', [
+            'solicitudes' => $solicitudes,
+            'estadoFiltro' => $estadoFiltro,
+            'campoFiltro' => $campoFiltro,
+            'buscarDui' => $buscarDui,
+            'orden' => $orden
+        ]);
+    }
+    
+    public function procesarSolicitud(): void {
+        $this->requireAdmin();
+        
+        if($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            header('Location: ' . RUTA . 'admin/solicitudes');
+            exit;
         }
-
-        if(!$modelClass){
-            echo '<div class="alert alert-danger">Modelo de solicitudes no encontrado.</div>';
-            return;
+        
+        $id = (int)($_POST['id'] ?? 0);
+        $accion = $_POST['accion'] ?? '';
+        $idPaciente = (int)($_POST['id_paciente'] ?? 0);
+        $campo = $_POST['campo_original'] ?? '';
+        $valorNuevo = $_POST['valor_nuevo'] ?? '';
+        
+        if(!$id || !in_array($accion, ['aprobar','rechazar'])) {
+            $_SESSION['msg_solicitud'] = 'Acción inválida';
+            $_SESSION['msg_tipo'] = 'danger';
+            header('Location: ' . RUTA . 'admin/solicitudes');
+            exit;
         }
-
-        $model = new $modelClass();
-
-        // Métodos posibles
-        if(method_exists($model,'pendientes')) {
-            $pendientes = $model->pendientes();
-        } elseif(method_exists($model,'listarPendientes')) {
-            $pendientes = $model->listarPendientes();
-        } else {
-            $pendientes = [];
+        
+        $solicitudModel = new SolicitudCambio();
+        $pacienteModel = new Paciente();
+        
+        // Cambiar estado de la solicitud
+        $nuevoEstado = ($accion === 'aprobar') ? 'aprobado' : 'rechazado';
+        $solicitudModel->actualizarEstado($id, $nuevoEstado);
+        
+        // Si se aprueba, actualizar el paciente
+        if($accion === 'aprobar' && $idPaciente && $campo && $valorNuevo) {
+            $pacienteModel->actualizarCampo($idPaciente, $campo, $valorNuevo);
+            $_SESSION['msg_solicitud'] = "Solicitud #$id aprobada y datos del paciente actualizados correctamente";
+            $_SESSION['msg_tipo'] = 'success';
+        } elseif($accion === 'rechazar') {
+            $_SESSION['msg_solicitud'] = "Solicitud #$id rechazada";
+            $_SESSION['msg_tipo'] = 'warning';
         }
-
-        $this->render('solicitudes',[ 'pendientes'=>$pendientes ]);
+        
+        header('Location: ' . RUTA . 'admin/solicitudes');
+        exit;
     }
 
     /* ================== Estadísticas =================== */
