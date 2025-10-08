@@ -51,7 +51,6 @@
               <th>Nombre</th>
               <th>Descripción</th>
               <th>Psicólogos</th>
-              <th>Estado</th>
               <th class="text-center">Acciones</th>
             </tr>
           </thead>
@@ -77,13 +76,6 @@
                     <span class="badge bg-info">
                       <i class="fas fa-user-md me-1"></i><?= (int)$esp['count_psicologos'] ?>
                     </span>
-                  </td>
-                  
-                  <td>
-                    <select name="estado" class="form-select form-select-sm" style="width: auto;">
-                      <option value="activo" <?= $esp['estado']==='activo'?'selected':'' ?>>Activo</option>
-                      <option value="inactivo" <?= $esp['estado']==='inactivo'?'selected':'' ?>>Inactivo</option>
-                    </select>
                   </td>
                   
                   <td class="text-center text-nowrap">
