@@ -207,12 +207,18 @@ class PDFHelper
         $psicNombre = $psicologo['nombre'] ?? ($cita['psicologo_nombre'] ?? 'Psicólogo');
         $fecha = htmlspecialchars($cita['fecha_hora'] ?? '');
 
+        // Código de acceso del paciente (portal)
+        $codigoAcceso = $paciente['codigo_acceso'] ?? $paciente['codigo'] ?? ($cita['codigo_acceso'] ?? '');
+
         $html = '<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:DejaVu Sans,Arial,sans-serif;font-size:12px;margin:18px} .ticket{max-width:480px;margin:0 auto;border:1px solid #222;padding:18px;border-radius:8px} .center{text-align:center} .qr{margin:12px auto} .meta{margin-top:10px}</style></head><body>';
         $html .= '<div class="ticket">';
         $html .= '<h2 class="center">Comprobante de Cita</h2>';
         $html .= '<div class="center"><strong>' . htmlspecialchars($psicNombre) . '</strong></div>';
         $html .= '<div class="center small text-muted">' . htmlspecialchars($fecha) . '</div>';
         $html .= '<div class="meta"><strong>Paciente:</strong> ' . htmlspecialchars($pacNombre) . '<br><strong>Cita ID:</strong> ' . (int) $cita['id'] . '</div>';
+        if (!empty($codigoAcceso)) {
+            $html .= '<div class="meta"><strong>Código de Acceso:</strong> <span style="font-family:DejaVu Sans Mono;">' . htmlspecialchars($codigoAcceso) . '</span></div>';
+        }
         if ($qrBase64) {
             $html .= '<div class="qr center"><img src="' . $qrBase64 . '" width="200" height="200" alt="QR"></div>';
         }
