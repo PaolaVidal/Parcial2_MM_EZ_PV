@@ -1061,10 +1061,81 @@ HTML;
         return;
     }
 
-    // Si no es solo graficas (pdf_datos o pdf legacy) agregamos footer y generamos el PDF (sin detalle completo de citas cuando es pdf_datos)
-    $html .= '\n    <div class="footer">\n        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial<br>\n        Pagina 1 de 1 - ' . $totalCitas . ' registros totales\n    </div>\n</body>\n</html>';
+        // Si es pdf_datos -> generar un PDF minimalista y con tablas sencillas (Resumen + Top 5 Psicologos)
+        if($soloDatos) {
+                // Construir filas de Top 5 Psicologos
+                $rows = '';
+                $pos = 1;
+                foreach($topPsicologos as $nombre => $data) {
+                        $rows .= '<tr>'
+                                . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . $pos++ . '</td>'
+                                . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8') . '</td>'
+                                . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($data['especialidad'] ?? 'N/A', ENT_QUOTES, 'UTF-8') . '</td>'
+                                . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . ($data['total'] ?? 0) . '</td>'
+                                . '<td style="padding:6px;border:1px solid #ddd;text-align:right">$' . number_format($data['ingresos'] ?? 0, 2) . '</td>'
+                                . '</tr>';
+                }
 
-            PDFHelper::generarPDF($html, 'Reporte_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
+                $periodoStr = htmlspecialchars($anio . ($mes ? '/' . $mes : ' (Todo el ano)'));
+                $generadoStr = date('d/m/Y H:i:s');
+                $porcRealizadas = $totalCitas > 0 ? round(($realizadas / $totalCitas) * 100, 1) : 0;
+                $porcPendientes = $totalCitas > 0 ? round(($pendientes / $totalCitas) * 100, 1) : 0;
+                $porcCanceladas = $totalCitas > 0 ? round(($canceladas / $totalCitas) * 100, 1) : 0;
+                $ingresoFmt = '$' . number_format($ingresoTotal, 2);
+
+                $htmlDatos = <<<HTML
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body{ font-family: DejaVu Sans, Arial, sans-serif; font-size: 10px; margin:18px }
+        h1,h2{ color:#2C3E50; margin:0 0 8px 0 }
+        table { width:100%; border-collapse: collapse; margin-top:8px }
+        th { background:#f2f2f2; padding:6px; border:1px solid #ddd; text-align:left; font-weight:bold }
+        td { padding:6px; border:1px solid #ddd }
+        .muted { color: #666; font-size: 9px }
+        .footer { text-align:center; font-size:9px; color:#999; margin-top:12px }
+    </style>
+</head>
+<body>
+    <h1>REPORTE DE DATOS - ESTADISTICAS</h1>
+    <div class="muted">Periodo: {$periodoStr} — Generado: {$generadoStr}</div>
+
+    <h2>Resumen Ejecutivo</h2>
+    <table>
+        <tr><th>Métrica</th><th>Valor</th></tr>
+        <tr><td>Total de Citas</td><td style="text-align:right">{$totalCitas}</td></tr>
+        <tr><td>Citas Realizadas</td><td style="text-align:right">{$realizadas} ({$porcRealizadas}%)</td></tr>
+        <tr><td>Citas Pendientes</td><td style="text-align:right">{$pendientes} ({$porcPendientes}%)</td></tr>
+        <tr><td>Citas Canceladas</td><td style="text-align:right">{$canceladas} ({$porcCanceladas}%)</td></tr>
+        <tr><td>Ingresos Totales</td><td style="text-align:right">{$ingresoFmt}</td></tr>
+    </table>
+
+    <h2>Top 5 Psicólogos</h2>
+    <table>
+        <thead>
+            <tr><th style="width:5%">#</th><th>Psicólogo</th><th>Especialidad</th><th style="width:10%">Citas</th><th style="width:15%">Ingresos</th></tr>
+        </thead>
+        <tbody>
+            {$rows}
+        </tbody>
+    </table>
+
+    <div class="footer">Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial — Página 1 de 1</div>
+</body>
+</html>
+HTML;
+
+                // Enviar PDF de datos
+                PDFHelper::generarPDF($htmlDatos, 'Datos_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'portrait', 'letter', true);
+                return;
+        }
+
+        // Si no es solo gráficas ni datos (pdf legacy) agregamos footer correctamente sin literales '\n'
+        $html .= "\n    <div class=\"footer\">\n        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial<br>\n        Pagina 1 de 1 - " . $totalCitas . " registros totales\n    </div>\n</body>\n</html>";
+
+                        PDFHelper::generarPDF($html, 'Reporte_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
             
         } else if($formato === 'excel') {
             // HOJA 1: Resumen General
