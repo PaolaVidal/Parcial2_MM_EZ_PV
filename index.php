@@ -84,8 +84,15 @@ $contenido = new Contenido();
 $rawUrl = $_GET['url'] ?? '';
 // Normalizar url: eliminar prefijos accidentales que no sean alfanuméricos (p. ej. '-' introducido por JS)
 $sanUrl = preg_replace('/^[^A-Za-z0-9]+/', '', $rawUrl);
-$_GET['url'] = $sanUrl;
-$urlActual = $sanUrl;
+// Si la URL normalizada está vacía o es solo '/', no establecer $_GET['url'] para que
+// el flujo por defecto muestre el portal público en la rama sin 'url'.
+if ($sanUrl === '' || $sanUrl === '/') {
+    unset($_GET['url']);
+    $urlActual = '';
+} else {
+    $_GET['url'] = $sanUrl;
+    $urlActual = $sanUrl;
+}
 if (!isset($_SESSION['usuario'])) {
     $publica = false;
     // Prefijos / rutas públicas permitidas
