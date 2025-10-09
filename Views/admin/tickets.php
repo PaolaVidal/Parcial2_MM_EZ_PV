@@ -20,12 +20,15 @@
   <form method="post" action="<?= RUTA ?>pago/crearPendientePorCita" class="row g-2 align-items-end">
       <div class="col-md-5">
   <label class="form-label small mb-0">Cita (realizada)</label>
-        <select name="id_cita" class="form-select form-select-sm" required>
+        <!-- Mini filtro para el combobox -->
+        <input id="cmbFilter" class="form-control form-control-sm mb-2" placeholder="Buscar ID, paciente, psicólogo o fecha...">
+        <select id="cmbCitas" name="id_cita" class="form-select form-select-sm" required>
           <option value="">Seleccione una cita...</option>
           <?php foreach ($citasSinPago as $c): ?>
             <?php $pac = htmlspecialchars($c['paciente_nombre'] ?? ''); $ps = htmlspecialchars($c['psicologo_nombre'] ?? '');
-                  $label = '#'.(int)$c['id'].' — '.htmlspecialchars(substr($c['fecha_hora'],0,16)).' — '.($pac ? $pac : ($ps ? $ps : 'Sin nombre')) . ($pac && $ps ? ' / ' . $ps : ''); ?>
-            <option value="<?= (int)$c['id'] ?>"><?= $label ?></option>
+                  $fechaShort = htmlspecialchars(substr($c['fecha_hora'],0,16));
+                  $label = '#'.(int)$c['id'].' — '.$fechaShort.' — '.($pac ? $pac : ($ps ? $ps : 'Sin nombre')) . ($pac && $ps ? ' / ' . $ps : ''); ?>
+            <option value="<?= (int)$c['id'] ?>" data-fecha="<?= htmlspecialchars(substr($c['fecha_hora'],0,10)) ?>" data-paciente="<?= $pac ?>" data-psicologo="<?= $ps ?>"><?= $label ?></option>
           <?php endforeach; ?>
         </select>
       </div>
@@ -398,6 +401,64 @@
 
   // Ejecutar filtros al cargar la página
   document.addEventListener('DOMContentLoaded', filtrarTickets);
+
+  // --- Mini filtro para el combobox de citas ---
+  (function () {
+    const cmbFilter = document.getElementById('cmbFilter');
+    const cmb = document.getElementById('cmbCitas');
+    if (!cmb || !cmbFilter) return;
+
+    // Cache original options so we can restore after filtering
+    const originalOptions = Array.from(cmb.options).map(o => ({
+      value: o.value,
+      text: o.text,
+      paciente: o.dataset.paciente || '',
+      psicologo: o.dataset.psicologo || '',
+      fecha: o.dataset.fecha || ''
+    }));
+
+    function filterCombo() {
+      const q = (cmbFilter.value || '').trim().toLowerCase();
+      // Remove all options
+      while (cmb.options.length > 0) cmb.remove(0);
+
+      // Always keep the empty placeholder
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Seleccione una cita...';
+      cmb.appendChild(placeholder);
+
+      if (!q) {
+        // Restore all original options
+        for (const o of originalOptions) {
+          const opt = document.createElement('option');
+          opt.value = o.value;
+          opt.textContent = o.text;
+          if (o.paciente) opt.dataset.paciente = o.paciente;
+          if (o.psicologo) opt.dataset.psicologo = o.psicologo;
+          if (o.fecha) opt.dataset.fecha = o.fecha;
+          cmb.appendChild(opt);
+        }
+        return;
+      }
+
+      for (const o of originalOptions) {
+        // match against id, label text, paciente, psicologo, fecha
+        const haystack = [o.value, o.text, o.paciente, o.psicologo, o.fecha].join(' ').toLowerCase();
+        if (haystack.includes(q)) {
+          const opt = document.createElement('option');
+          opt.value = o.value;
+          opt.textContent = o.text;
+          if (o.paciente) opt.dataset.paciente = o.paciente;
+          if (o.psicologo) opt.dataset.psicologo = o.psicologo;
+          if (o.fecha) opt.dataset.fecha = o.fecha;
+          cmb.appendChild(opt);
+        }
+      }
+    }
+
+    cmbFilter.addEventListener('input', filterCombo);
+  })();
 </script>
 
 <?php require __DIR__ . '/../layout/footer.php'; ?>
