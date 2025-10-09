@@ -815,7 +815,32 @@ class AdminController {
         $stCitas->execute($params);
         $citas = $stCitas->fetchAll(PDO::FETCH_ASSOC);
         
-        if($formato === 'pdf') {
+        if($formato === 'pdf' || $formato === 'pdf_graficas' || $formato === 'pdf_datos') {
+            // Calcular estadísticas (común para PDFs)
+            $totalCitas = count($citas);
+            $realizadas = count(array_filter($citas, fn($c) => $c['estado'] === 'realizada'));
+            $pendientes = count(array_filter($citas, fn($c) => $c['estado'] === 'pendiente'));
+            $canceladas = count(array_filter($citas, fn($c) => $c['estado'] === 'cancelada'));
+            $ingresoTotal = array_sum(array_column($citas, 'monto'));
+            $promedioIngreso = $totalCitas > 0 ? $ingresoTotal / $totalCitas : 0;
+
+            // Agrupar por psicólogo (para top)
+            $porPsicologo = [];
+            foreach($citas as $c) {
+                $ps = $c['psicologo'] ?? 'Desconocido';
+                if(!isset($porPsicologo[$ps])) {
+                    $porPsicologo[$ps] = ['total' => 0, 'ingresos' => 0, 'especialidad' => $c['especialidad'] ?? 'N/A'];
+                }
+                $porPsicologo[$ps]['total']++;
+                $porPsicologo[$ps]['ingresos'] += (float)$c['monto'];
+            }
+            arsort($porPsicologo);
+            $topPsicologos = array_slice($porPsicologo, 0, 5, true);
+
+            // Si el formato es pdf_graficas -> mostramos solo resumen + gráficas
+            $soloGraficas = $formato === 'pdf_graficas';
+            // Si el formato es pdf_datos -> mostramos resumen + top psicologos (sin detalle de citas)
+            $soloDatos = $formato === 'pdf_datos';
             // Calcular estadísticas
             $totalCitas = count($citas);
             $realizadas = count(array_filter($citas, fn($c) => $c['estado'] === 'realizada'));
@@ -986,65 +1011,59 @@ class AdminController {
     $ingresosData = array_map('floatval', array_column($ingresosPorMesData, 'total'));
     $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos por Mes', 700, 300);
     
-    $html .= '
+    // Si el formato es solo gráficas debemos generar un PDF minimalista: solo header + gráficas + footer
+    if($soloGraficas) {
+        // Preparar textos seguros para interpolación
+        $periodoStr = htmlspecialchars($anio . ($mes ? '/' . $mes : ' (Todo el ano)'));
+        $generadoStr = date('d/m/Y H:i:s');
+
+        $htmlGraphs = <<<HTML
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <style>
+        body { font-family: DejaVu Sans, Arial, sans-serif; font-size: 9px; margin: 15px; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 3px solid #2C3E50; padding-bottom: 10px; }
+        .header h1 { color: #2C3E50; font-size: 20px; margin: 5px 0; }
+        .header .subtitle { color: #7f8c8d; font-size: 11px; }
+        .footer { text-align: center; font-size: 8px; color: #7f8c8d; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px; }
+        .page-break { page-break-after: always; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>GRAFICAS - ESTADISTICAS DEL SISTEMA</h1>
+        <div class="subtitle">Periodo: {$periodoStr}</div>
+        <div class="subtitle">Generado: {$generadoStr}</div>
+    </div>
+
     <h2>Graficas Estadisticas</h2>
     <div style="text-align: center; margin-bottom: 20px;">
-        <img src="' . $chartCitasMes . '" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+        <img src="{$chartCitasMes}" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
     </div>
-    
     <div style="text-align: center; margin-bottom: 20px;">
-        <img src="' . $chartEstado . '" style="width: 80%; max-width: 600px; margin-bottom: 15px;">
+        <img src="{$chartEstado}" style="width: 80%; max-width: 600px; margin-bottom: 15px;">
     </div>
-    
     <div style="text-align: center; margin-bottom: 20px;">
-        <img src="' . $chartIngresos . '" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+        <img src="{$chartIngresos}" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
     </div>
-    
     <div class="page-break"></div>
-    
-    <h2>Detalle Completo de Citas</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Fecha</th>
-                <th>Paciente</th>
-                <th>Psicologo</th>
-                <th>Especialidad</th>
-                <th class="text-center">Estado</th>
-                <th class="text-right">Monto</th>
-            </tr>
-        </thead>
-        <tbody>';
-            
-            foreach($citas as $c) {
-                $paciente = htmlspecialchars($c['paciente'] ?? 'N/A', ENT_QUOTES, 'UTF-8');
-                $psicologo = htmlspecialchars($c['psicologo'] ?? 'N/A', ENT_QUOTES, 'UTF-8');
-                $especialidad = htmlspecialchars($c['especialidad'] ?? 'N/A', ENT_QUOTES, 'UTF-8');
-                $estado = $c['estado'] ?? 'pendiente';
-                $badgeClass = $estado === 'realizada' ? 'badge-success' : ($estado === 'pendiente' ? 'badge-warning' : 'badge-danger');
-                
-                $html .= '<tr>
-                <td>' . (int)$c['id'] . '</td>
-                <td>' . date('d/m/Y H:i', strtotime($c['fecha_hora'])) . '</td>
-                <td>' . $paciente . '</td>
-                <td>' . $psicologo . '</td>
-                <td>' . $especialidad . '</td>
-                <td class="text-center"><span class="badge ' . $badgeClass . '">' . ucfirst($estado) . '</span></td>
-                <td class="text-right">$' . number_format((float)$c['monto'], 2) . '</td>
-            </tr>';
-            }
-            
-            $html .= '</tbody>
-    </table>
-    
+
     <div class="footer">
-        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial<br>
-        Pagina 1 de 1 - ' . $totalCitas . ' registros totales
+        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial
     </div>
 </body>
-</html>';
-            
+</html>
+HTML;
+
+        PDFHelper::generarPDF($htmlGraphs, 'Graficas_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
+        return;
+    }
+
+    // Si no es solo graficas (pdf_datos o pdf legacy) agregamos footer y generamos el PDF (sin detalle completo de citas cuando es pdf_datos)
+    $html .= '\n    <div class="footer">\n        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial<br>\n        Pagina 1 de 1 - ' . $totalCitas . ' registros totales\n    </div>\n</body>\n</html>';
+
             PDFHelper::generarPDF($html, 'Reporte_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
             
         } else if($formato === 'excel') {
