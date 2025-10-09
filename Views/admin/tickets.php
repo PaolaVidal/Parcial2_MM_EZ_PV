@@ -45,34 +45,6 @@
   </div>
 </div>
 
-<!-- Buscador de citas (admin) -->
-<div class="card mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small mb-0">Buscar texto (paciente, motivo, DUI)</label>
-        <input id="busq_q" class="form-control form-control-sm" placeholder="Texto...">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small mb-0">ID Cita</label>
-        <input id="busq_id" type="number" min="1" class="form-control form-control-sm" placeholder="ID">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small mb-0">Fecha</label>
-        <input id="busq_fecha" type="date" class="form-control form-control-sm">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label small mb-0">Psicólogo (ID o nombre)</label>
-        <input id="busq_ps" class="form-control form-control-sm" placeholder="Psicólogo">
-      </div>
-      <div class="col-md-2 d-grid">
-        <button class="btn btn-outline-primary btn-sm" type="button" onclick="buscarCitasAdmin()">Buscar Citas</button>
-      </div>
-    </div>
-    <div id="resultadosBusq" class="mt-3"></div>
-  </div>
-</div>
-
 <div class="card mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-end small">
