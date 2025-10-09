@@ -152,9 +152,21 @@ foreach ($pacientes as $p) {
   </thead>
   <tbody>
     <?php $pagoModel = new Pago();
+    $ticketModelForRow = new TicketPago();
     $todas = array_merge($data['pendientes'], $data['realizadas'], $data['canceladas']); ?>
     <?php foreach ($todas as $c): ?>
-      <?php $p = $pagoModel->obtenerPorCita((int) $c['id']); ?>
+      <?php $p = $pagoModel->obtenerPorCita((int) $c['id']);
+      // Buscar ticket relacionado si existe para proporcionar enlaces directos
+      $btnPdf = '';
+      $btnImg = '';
+      if ($p) {
+        $ticketRow = $ticketModelForRow->obtenerPorPago((int) $p['id']);
+        if ($ticketRow) {
+          $btnPdf = RUTA . 'ticket/pdf/' . (int) $ticketRow['id'];
+          $btnImg = RUTA . 'ticket/ver/' . (int) $ticketRow['id'];
+        }
+      }
+      ?>
       <?php $nombrePac = $mapPac[$c['id_paciente']] ?? ('Paciente #' . $c['id_paciente']); ?>
       <tr data-estado="<?= htmlspecialchars($c['estado_cita']) ?>" data-fecha="<?= substr($c['fecha_hora'], 0, 10) ?>"
         data-paciente="<?= htmlspecialchars(strtolower($nombrePac)) ?>">
@@ -167,7 +179,9 @@ foreach ($pacientes as $p) {
         <td class="text-center">
           <?php $img = htmlspecialchars($c['qr_code']); ?>
           <button type="button" class="btn btn-outline-secondary btn-sm"
-            onclick="mostrarQRModal('<?= $img ?>','CITA:<?= (int) $c['id'] ?>')" title="Ver QR">QR</button>
+            onclick="mostrarQRModal(this,'<?= $img ?>','CITA:<?= (int) $c['id'] ?>')"
+            data-pdf="<?= htmlspecialchars(RUTA . 'cita/pdf/' . (int) $c['id']) ?>"
+            data-img="<?= htmlspecialchars($btnImg) ?>" title="Ver QR">QR</button>
         <td>
           <?php if ($p && $p['estado_pago'] === 'pagado'): ?>
             <span class="badge bg-success">Pagado</span>
@@ -308,7 +322,8 @@ foreach ($pacientes as $p) {
   }
 
   // Mostrar modal con el QR
-  function mostrarQRModal(rutaRel, contenido) {
+  // mostrarQRModal(btnElement, rutaRel, contenido)
+  function mostrarQRModal(btn, rutaRel, contenido) {
     try {
       let base = BASE;
       // Normalizar base (asegurar termina en /)
@@ -322,6 +337,7 @@ foreach ($pacientes as $p) {
       }
       const img = document.getElementById('qrModalImg');
       const span = document.getElementById('qrModalCode');
+      const linksContainer = document.getElementById('qrTicketLinks');
       span.textContent = contenido || '';
       img.alt = 'QR ' + contenido;
       img.removeAttribute('data-error');
@@ -349,6 +365,29 @@ foreach ($pacientes as $p) {
         img.style.opacity = '1';
       };
       img.src = ruta + (ruta.includes('?') ? '' : '?t=' + (Date.now())); // evitar cache si se regeneró
+      // Rellenar links dinámicos desde atributos data del botón si existen
+      try {
+        if (linksContainer) {
+          linksContainer.innerHTML = '';
+          let pdf = '';
+          let imgLink = '';
+          if (btn && btn.getAttribute) {
+            pdf = btn.getAttribute('data-pdf') || '';
+            imgLink = btn.getAttribute('data-img') || '';
+          }
+          const parts = [];
+          if (pdf) {
+            parts.push('<a href="' + pdf + '" target="_blank" class="btn btn-sm btn-danger me-1"><i class="fas fa-file-pdf"></i> Descargar PDF</a>');
+            parts.push('<button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="printPdf(\'' + pdf.replace(/'/g, "\\'") + '\')"><i class="fas fa-print"></i> Imprimir</button>');
+          }
+          if (imgLink) {
+            parts.push('<a href="' + imgLink + '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-image"></i> Ver imagen</a>');
+          }
+          if (parts.length) {
+            linksContainer.innerHTML = '<div class="alert alert-success small mb-0"><div class="mb-1"><strong>Ticket:</strong></div><div class="d-flex flex-wrap gap-2">' + parts.join('') + '</div></div>';
+          }
+        }
+      } catch (ex) { console.error('qr links render failed', ex); }
       if (window.bootstrap && bootstrap.Modal) {
         const modalEl = document.getElementById('qrModal');
         const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -361,6 +400,23 @@ foreach ($pacientes as $p) {
       console.error('Error mostrando modal QR', e);
       alert('No se pudo mostrar el QR');
     }
+  }
+</script>
+
+<script>
+  // Abrir PDF en iframe temporal y lanzar diálogo de impresión
+  function printPdf(url) {
+    try {
+      const w = window.open('', '_blank');
+      if (!w) { alert('Permite popups para imprimir'); return; }
+      // Crear documento simple con iframe
+      w.document.write('<html><head><title>Imprimir ticket</title></head><body style="margin:0">');
+      w.document.write('<iframe src="' + encodeURI(url) + '" frameborder="0" style="border:0;width:100%;height:100vh"></iframe>');
+      w.document.write('</body></html>');
+      w.document.close();
+      // Esperar carga e intentar imprimir
+      w.onload = function () { try { w.focus(); w.print(); } catch (e) { console.error(e); } };
+    } catch (e) { console.error('printPdf error', e); alert('No se pudo abrir el PDF para imprimir'); }
   }
 </script>
 
@@ -665,6 +721,67 @@ foreach ($pacientes as $p) {
         <button type="button" class="btn btn-sm btn-outline-primary mt-2"
           onclick="window.open(document.getElementById('qrModalImg').src,'_blank','noopener')">Abrir en nueva
           pestaña</button>
+
+        <!-- Contenedor para enlaces al ticket (rellenado dinámicamente desde el botón o por sesión) -->
+        <div id="qrTicketLinks" class="mt-3"></div>
+
+        <!-- Enlace(s) al ticket generado (si existen en sesión) -->
+        <?php if (!empty($_SESSION['ticket_files']) && is_array($_SESSION['ticket_files'])):
+          $tf = $_SESSION['ticket_files']; ?>
+          <div class="mt-3">
+            <div class="alert alert-success small mb-0">
+              <div class="mb-1"><strong>Ticket generado:</strong></div>
+              <div class="d-flex flex-wrap gap-2">
+                <?php if (!empty($tf['pdf'])): ?>
+                  <a href="<?= htmlspecialchars(RUTA . ltrim($tf['pdf'], '/')) ?>" target="_blank"
+                    class="btn btn-sm btn-danger">
+                    <i class="fas fa-file-pdf"></i> Descargar PDF
+                  </a>
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    onclick="printPdf('<?= htmlspecialchars(RUTA . ltrim($tf['pdf'], '/')) ?>')">
+                    <i class="fas fa-print"></i> Imprimir
+                  </button>
+                <?php endif; ?>
+                <?php if (!empty($tf['png'])): ?>
+                  <a href="<?= htmlspecialchars(RUTA . ltrim($tf['png'], '/')) ?>" target="_blank"
+                    class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-image"></i> Ver imagen
+                  </a>
+                <?php endif; ?>
+              </div>
+            </div>
+          </div>
+          <script>
+            // Si el ticket se generó en esta petición, intentar abrir automáticamente el modal QR.
+            // Hacemos polling breve por if bootstrap no está definido aún (puede cargarse después).
+            (function openQrModalWhenReady() {
+              const tryShow = () => {
+                try {
+                  const modalEl = document.getElementById('qrModal');
+                  if (!modalEl) return false;
+                  if (window.bootstrap && bootstrap.Modal) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+                    return true;
+                  }
+                } catch (e) { console.error('Error auto-abriendo modal QR', e); }
+                return false;
+              };
+
+              // Intentos: cada 200ms hasta 3 segundos
+              let attempts = 0;
+              const maxAttempts = 15;
+              const t = setInterval(() => {
+                attempts++;
+                if (tryShow() || attempts >= maxAttempts) {
+                  clearInterval(t);
+                }
+              }, 200);
+            })();
+          </script>
+          <?php
+          // Limpiar la sesión para no mostrar repetidamente
+          unset($_SESSION['ticket_files']);
+        endif; ?>
       </div>
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
@@ -673,45 +790,4 @@ foreach ($pacientes as $p) {
   </div>
 </div>
 
-<script>
-  // Fallback: definir mostrarQRModal si por alguna razón no quedó en el bloque anterior
-  if (typeof mostrarQRModal !== 'function') {
-    console.warn('Fallback: definiendo mostrarQRModal al final de la vista');
-    function mostrarQRModal(rutaRel, contenido) {
-      try {
-        let base = (typeof BASE !== 'undefined' ? BASE : '');
-        if (base && !base.endsWith('/')) base += '';
-        let ruta = (rutaRel || '').replace(/^public\//, '');
-        if (!/^https?:/i.test(ruta) && base && !ruta.startsWith(base)) ruta = base + ruta;
-        const img = document.getElementById('qrModalImg');
-        const span = document.getElementById('qrModalCode');
-        if (!img || !span) { alert('Modal no presente en el DOM'); return; }
-        span.textContent = contenido || '';
-        img.alt = 'QR ' + contenido;
-        img.onerror = function () {
-          if (img.getAttribute('data-error') === '2') return;
-          const tried = img.getAttribute('data-error');
-          if (!tried) {
-            img.setAttribute('data-error', '1');
-            const clean = img.src.replace(/\?t=\d+/, '');
-            if (!/\/public\//.test(clean)) {
-              let altSrc = clean.replace(/(qrcodes\/.*)$/, 'public/$1');
-              img.src = altSrc + (altSrc.includes('?') ? '' : '?t=' + (Date.now()));
-              return;
-            }
-          }
-          img.setAttribute('data-error', '2');
-          span.textContent = 'No se pudo cargar el QR';
-          img.classList.add('border-danger');
-        };
-        img.src = ruta + (ruta.includes('?') ? '' : '?t=' + (Date.now()));
-        if (window.bootstrap && bootstrap.Modal) {
-          const modalEl = document.getElementById('qrModal');
-          bootstrap.Modal.getOrCreateInstance(modalEl).show();
-        } else {
-          window.open(img.src, '_blank', 'noopener');
-        }
-      } catch (e) { console.error(e); alert('Error mostrando QR'); }
-    }
-  }
-</script>
+<!-- fallback removed: use primary mostrarQRModal implementation earlier in the file -->

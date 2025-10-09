@@ -133,4 +133,90 @@ class PagoController extends BaseController
             'ticket' => $ticket
         ]);
     }
+
+    /** Registrar pago directamente a partir de una cita (usado por admin desde tickets) */
+    public function registrarPorCita(): void
+    {
+        // Solo admin puede usar este endpoint
+        if (!isset($_SESSION['usuario']) || ($_SESSION['usuario']['rol'] ?? '') !== 'admin') {
+            http_response_code(403);
+            echo '<div class="alert alert-danger">Acceso denegado</div>';
+            return;
+        }
+
+        $idCita = (int) ($_POST['id_cita'] ?? 0);
+        $monto = isset($_POST['monto']) ? (float) $_POST['monto'] : 0.0;
+        if (!$idCita) {
+            $_SESSION['flash_error'] = 'ID de cita inválido';
+            $this->safeRedirect(url('admin', 'tickets'));
+            return;
+        }
+
+        $pagoModel = new Pago();
+        $ticketModel = new TicketPago();
+
+        try {
+            $idPago = $pagoModel->registrarPagoCita($idCita, $monto > 0 ? $monto : 50.0);
+
+            // Crear ticket si no existe
+            $ticket = $ticketModel->obtenerPorPago($idPago);
+            if (!$ticket) {
+                try {
+                    $codigo = 'TCK-' . strtoupper(bin2hex(random_bytes(4)));
+                } catch (Throwable $e) {
+                    $codigo = 'TCK-' . time();
+                }
+                $numero = date('YmdHis') . '-' . $idPago;
+                $ticketUrl = RUTA . 'ticket/verPago/' . $idPago;
+                $qr = QRHelper::generarQR('PAGO:' . $idPago . ' URL:' . $ticketUrl, 'ticket_' . $idPago);
+
+                $ticketModel->crear([
+                    'id_pago' => $idPago,
+                    'codigo' => $codigo,
+                    'numero_ticket' => $numero,
+                    'qr_code' => $qr
+                ]);
+            }
+
+            $_SESSION['flash_ok'] = 'Pago registrado correctamente (ID ' . $idPago . ')';
+        } catch (Throwable $e) {
+            error_log('Error registrarPorCita: ' . $e->getMessage());
+            $_SESSION['flash_error'] = 'Error registrando el pago: ' . $e->getMessage();
+        }
+
+        $this->safeRedirect(url('admin', 'tickets'));
+    }
+
+    /** Crear un pago pendiente para una cita (no marca como pagado) desde admin */
+    public function crearPendientePorCita(): void
+    {
+        if (!isset($_SESSION['usuario']) || ($_SESSION['usuario']['rol'] ?? '') !== 'admin') {
+            http_response_code(403);
+            echo '<div class="alert alert-danger">Acceso denegado</div>';
+            return;
+        }
+        $idCita = (int) ($_POST['id_cita'] ?? 0);
+        $monto = isset($_POST['monto']) ? (float) $_POST['monto'] : 50.0;
+        if (!$idCita) {
+            $_SESSION['flash_error'] = 'ID de cita inválido';
+            $this->safeRedirect(url('admin', 'tickets'));
+            return;
+        }
+        $pagoModel = new Pago();
+        try {
+            // If exists, do nothing; else create with pending state
+            $exists = $pagoModel->obtenerPorCita($idCita);
+            if (!$exists) {
+                // Use crearParaCita but ensure it remains pending: crearParaCita marks pendiente by default
+                $idPago = $pagoModel->crearParaCita($idCita, $monto);
+                $_SESSION['flash_ok'] = 'Pago pendiente creado (ID ' . $idPago . ')';
+            } else {
+                $_SESSION['flash_error'] = 'Ya existe un pago para esa cita (ID ' . $exists['id'] . ')';
+            }
+        } catch (Throwable $e) {
+            error_log('Error crearPendientePorCita: ' . $e->getMessage());
+            $_SESSION['flash_error'] = 'Error creando pago pendiente: ' . $e->getMessage();
+        }
+        $this->safeRedirect(url('admin', 'tickets'));
+    }
 }

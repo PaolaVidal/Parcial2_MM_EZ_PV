@@ -230,6 +230,19 @@ class AdminController extends BaseController
         $psicologos = $psModel->listarTodos();
         $especialidades = $espModel->listarActivas();
         $masSolic = method_exists($psModel, 'masSolicitados') ? $psModel->masSolicitados() : [];
+        // Enriquecer masSolic con nombres de psicólogos
+        if (!empty($masSolic)) {
+            // crear mapa id -> nombre
+            $psTodos = $psModel->listarTodos();
+            $map = [];
+            foreach ($psTodos as $pp) {
+                $map[(int) $pp['id']] = $pp['nombre'] ?? ($pp['nombre'] ?? null);
+            }
+            foreach ($masSolic as $k => $m) {
+                $id = (int) ($m['id_psicologo'] ?? $m['id'] ?? 0);
+                $masSolic[$k]['nombre'] = $map[$id] ?? ($masSolic[$k]['nombre'] ?? null);
+            }
+        }
         $this->render('psicologos', [
             'psicologos' => $psicologos,
             'especialidades' => $especialidades,
@@ -313,21 +326,28 @@ class AdminController extends BaseController
         $psModel = new Psicologo();
         // JSON fetch (AJAX list)
         if (isset($_GET['ajax']) && $_GET['ajax'] === 'list') {
-            ob_clean(); // Limpiar cualquier salida previa
-            header('Content-Type: application/json');
+            // Ensure all buffers are cleared to avoid layout/html contamination
+            while (ob_get_level()) {
+                @ob_end_clean();
+            }
+            header('Content-Type: application/json; charset=utf-8');
             try {
                 $citas = $this->filtrarCitasAdmin($citaModel);
                 echo json_encode(['citas' => $citas]);
                 exit;
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
+                error_log('Error en AJAX list citas: ' . $e->getMessage());
                 echo json_encode(['error' => 'Error al cargar citas: ' . $e->getMessage(), 'citas' => []]);
                 exit;
             }
         }
         // AJAX evaluaciones - obtener evaluaciones de una cita
         if (isset($_GET['ajax']) && $_GET['ajax'] === 'evaluaciones') {
-            ob_clean(); // Limpiar cualquier salida previa
-            header('Content-Type: application/json');
+            // Ensure all buffers are cleared to avoid layout/html contamination
+            while (ob_get_level()) {
+                @ob_end_clean();
+            }
+            header('Content-Type: application/json; charset=utf-8');
             try {
                 $idCita = (int) ($_GET['id_cita'] ?? 0);
                 if (!$idCita) {
@@ -339,27 +359,33 @@ class AdminController extends BaseController
                 $evaluaciones = $evalModel->obtenerPorCita($idCita);
                 echo json_encode(['evaluaciones' => $evaluaciones]);
                 exit;
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
+                error_log('Error en AJAX evaluaciones: ' . $e->getMessage());
                 echo json_encode(['error' => 'Error al cargar evaluaciones: ' . $e->getMessage()]);
                 exit;
             }
         }
         // AJAX slots para un psicólogo destino en fecha dada (para reasignar)
         if (isset($_GET['ajax']) && $_GET['ajax'] === 'slots') {
-            ob_clean(); // Limpiar cualquier salida previa
-            header('Content-Type: application/json');
+            // Hardened response: always return valid JSON, avoid stray output
+            while (ob_get_level()) {
+                @ob_end_clean();
+            }
+            header('Content-Type: application/json; charset=utf-8');
+            $resp = ['ps' => 0, 'fecha' => '', 'slots' => []];
             try {
                 $idPs = (int) ($_GET['ps'] ?? 0);
                 $fecha = $_GET['fecha'] ?? date('Y-m-d');
                 $interval = 30; // fijo
-                $resp = ['ps' => $idPs, 'fecha' => $fecha, 'slots' => []];
+                $resp['ps'] = $idPs;
+                $resp['fecha'] = $fecha;
 
                 if (!$idPs || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
                     echo json_encode($resp);
                     exit;
                 }
 
-                // Obtener bloques horario (similar a PsicologoController::slots)
+                // Obtener bloques horario (similar a PsicologoController::proximosSlots)
                 $diaMap = ['Mon' => 'lunes', 'Tue' => 'martes', 'Wed' => 'miércoles', 'Thu' => 'jueves', 'Fri' => 'viernes', 'Sat' => 'sábado', 'Sun' => 'domingo'];
                 $dt = DateTime::createFromFormat('Y-m-d', $fecha);
                 if (!$dt) {
@@ -368,8 +394,6 @@ class AdminController extends BaseController
                 }
 
                 $diaBD = $diaMap[$dt->format('D')] ?? 'lunes';
-
-                // Variantes sin acento para compatibilidad (miercoles, sabado)
                 $variants = [$diaBD];
                 if ($diaBD === 'miércoles')
                     $variants[] = 'miercoles';
@@ -420,9 +444,10 @@ class AdminController extends BaseController
 
                 echo json_encode($resp);
                 exit;
-
-            } catch (Exception $e) {
-                echo json_encode(['error' => true, 'message' => $e->getMessage(), 'slots' => []]);
+            } catch (Throwable $e) {
+                // Capture any error and return JSON with message
+                error_log('Error en AJAX slots: ' . $e->getMessage());
+                echo json_encode(['error' => 'Exception: ' . $e->getMessage()]);
                 exit;
             }
         }
@@ -505,10 +530,16 @@ class AdminController extends BaseController
     // Aplica filtros GET: estado, fecha, texto (id, motivo), psicologo
     private function filtrarCitasAdmin(Cita $citaModel): array
     {
-        if (method_exists($citaModel, 'citasPorRango')) {
-            $base = $citaModel->citasPorRango(date('Y-m-01'), '2999-12-31');
+        // Prefer a detailed listing that includes joined patient/psychologist names
+        if (method_exists($citaModel, 'citasPorRangoDetallado')) {
+            // Use a wide range to include all recent records (same intent as previous citasPorRango usage)
+            $base = $citaModel->citasPorRangoDetallado(date('Y-m-01') . ' 00:00:00', '2999-12-31 23:59:59');
         } elseif (method_exists($citaModel, 'todas')) {
+            // Fallback: todas() already returns paciente_nombre and psicologo_nombre for active records
             $base = $citaModel->todas();
+        } elseif (method_exists($citaModel, 'citasPorRango')) {
+            // Last resort: use citasPorRango (may not include joined names)
+            $base = $citaModel->citasPorRango(date('Y-m-01'), '2999-12-31');
         } else {
             $base = [];
         }
@@ -543,6 +574,14 @@ class AdminController extends BaseController
         require_once __DIR__ . '/../Models/Evaluacion.php';
         $evalModel = new Evaluacion();
         foreach ($citasFiltradas as $key => $cita) {
+            // Normalize name fields so the view can display names regardless of source
+            if (isset($cita['paciente']) && !isset($cita['paciente_nombre'])) {
+                $citasFiltradas[$key]['paciente_nombre'] = $cita['paciente'];
+            }
+            if (isset($cita['psicologo']) && !isset($cita['psicologo_nombre'])) {
+                $citasFiltradas[$key]['psicologo_nombre'] = $cita['psicologo'];
+            }
+            // Older methods may already include paciente_nombre / psicologo_nombre
             $citasFiltradas[$key]['count_evaluaciones'] = $evalModel->contarPorCita((int) $cita['id']);
         }
 
@@ -577,6 +616,66 @@ class AdminController extends BaseController
         $ticketModel = new TicketPago();
         $tickets = $ticketModel->listarTodos();
         $this->render('tickets', ['tickets' => $tickets]);
+    }
+
+    /** Buscar citas (JSON) usado por la UI admin para generar pagos pendientes */
+    public function buscarCitas(): void
+    {
+        $this->requireAdmin();
+        $q = trim($_GET['q'] ?? '');
+        $id = (int) ($_GET['id'] ?? 0);
+        $fecha = $_GET['fecha'] ?? '';
+        $ps = $_GET['ps'] ?? '';
+
+        $citaModel = new Cita();
+        $pdo = $citaModel->pdo();
+
+        $where = [];
+        $params = [];
+        if ($id) {
+            $where[] = 'c.id = ?';
+            $params[] = $id;
+        }
+        if ($fecha && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            $where[] = 'DATE(c.fecha_hora) = ?';
+            $params[] = $fecha;
+        }
+        if ($ps) {
+            // allow numeric id or text name
+            if (is_numeric($ps)) {
+                $where[] = 'c.id_psicologo = ?';
+                $params[] = (int) $ps;
+            } else {
+                $where[] = 'u.nombre LIKE ?';
+                $params[] = "%$ps%";
+            }
+        }
+        if ($q) {
+            $where[] = '(p.nombre LIKE ? OR p.dui LIKE ? OR c.motivo_consulta LIKE ?)';
+            $params[] = "%$q%";
+            $params[] = "%$q%";
+            $params[] = "%$q%";
+        }
+
+        $sql = "SELECT c.id, c.fecha_hora, c.id_paciente, COALESCE(p.nombre, '') paciente_nombre, c.id_psicologo, COALESCE(u.nombre,'') psicologo_nombre
+                FROM Cita c
+                LEFT JOIN Paciente p ON p.id = c.id_paciente
+                LEFT JOIN Psicologo ps ON ps.id = c.id_psicologo
+                LEFT JOIN Usuario u ON u.id = ps.id_usuario
+                " . (count($where) ? 'WHERE ' . implode(' AND ', $where) : '') . "
+                ORDER BY c.fecha_hora DESC LIMIT 50";
+
+        $st = $pdo->prepare($sql);
+        $st->execute($params);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        // Return JSON
+        while (ob_get_level()) {
+            @ob_end_clean();
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['results' => $rows]);
+        exit;
     }
 
     /* ================== Horarios Psicólogos =================== */

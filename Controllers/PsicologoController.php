@@ -896,6 +896,66 @@ HTML;
 
         // Marcar como realizada
         if ($citaM->marcarRealizada($idCita)) {
+            // Generar/crear pago pendiente y ticket para impresión
+            try {
+                require_once __DIR__ . '/../Models/Pago.php';
+                require_once __DIR__ . '/../Models/TicketPago.php';
+                require_once __DIR__ . '/../Models/Paciente.php';
+                require_once __DIR__ . '/../helpers/QRHelper.php';
+                require_once __DIR__ . '/../helpers/PDFHelper.php';
+
+                $pagoModel = new Pago();
+                $ticketModel = new TicketPago();
+                $pacModel = new Paciente();
+
+                // Crear pago pendiente si no existe
+                $pago = $pagoModel->obtenerPorCita($idCita);
+                if (!$pago) {
+                    $idPago = $pagoModel->crearParaCita($idCita, 50.0); // monto base por defecto
+                    $pago = $pagoModel->obtener($idPago);
+                }
+
+                // Crear ticket si no existe
+                $ticket = $ticketModel->obtenerPorPago((int)$pago['id']);
+                if (!$ticket) {
+                    try { $codigo = 'TCK-' . strtoupper(bin2hex(random_bytes(4))); } catch (Throwable $e) { $codigo = 'TCK-' . time(); }
+                    $numero = date('YmdHis') . '-' . $pago['id'];
+
+                    // Obtener paciente y su código de acceso
+                    $paciente = $pacModel->getById((int)$cita['id_paciente']);
+                    $codigoAcceso = $paciente['codigo_acceso'] ?? $paciente['codigo'] ?? '';
+
+                    // Preparar texto del QR en formato 'ticket supermercado'
+                    $qrText = "TICKET\nNumero: " . $numero . "\nPagoID: " . $pago['id'] . "\nCitaID: " . $idCita . "\nPaciente: " . ($paciente['nombre'] ?? '') . "\nAcceso: " . $codigoAcceso . "\nMonto: $" . number_format((float)$pago['monto_total'],2) . "\nURL: " . RUTA . 'ticket/verPago/' . $pago['id'];
+
+                    $qrPath = QRHelper::generarQR($qrText, 'ticket_' . $pago['id']);
+
+                    $ticketId = $ticketModel->crear([
+                        'id_pago' => (int)$pago['id'],
+                        'codigo' => $codigo,
+                        'numero_ticket' => $numero,
+                        'qr_code' => $qrPath
+                    ]);
+
+                    $ticket = $ticketModel->obtener($ticketId);
+
+                    // Generar archivos PDF/PNG del ticket para imprimir
+                    $files = PDFHelper::guardarTicketPDFFile([
+                        'id' => $ticketId,
+                        'codigo' => $codigo,
+                        'numero_ticket' => $numero,
+                        'fecha_emision' => date('Y-m-d H:i:s'),
+                        'id_pago' => $pago['id'],
+                        'paciente_nombre' => $paciente['nombre'] ?? ''
+                    ], $pago, $paciente);
+
+                    // Guardar en sesión para mostrar enlace de descarga en la UI
+                    $_SESSION['ticket_files'] = $files;
+                }
+            } catch (Throwable $e) {
+                error_log('Error generando ticket al finalizar cita: ' . $e->getMessage());
+            }
+
             $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&ok=finalizada');
         } else {
             $this->safeRedirect(RUTA . 'index.php?url=psicologo/atenderCita&id=' . $idCita . '&err=update');

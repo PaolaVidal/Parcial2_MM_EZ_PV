@@ -138,6 +138,29 @@ if (isset($_GET['url'])) {
         }
     }
 
+    // Exportación de estadísticas psicólogo (PDF/Excel) antes del layout
+    if ($paginaEarly === 'psicologo' && $accionEarly === 'estadisticas' && isset($_GET['export'])) {
+        $filePs = $contenido->obtenerContenido('psicologo');
+        if ($filePs) {
+            // Capture output during require to detect stray echoes/BOMs
+            ob_start();
+            require_once $filePs;
+            $requireOutput = ob_get_clean();
+            if ($requireOutput !== '') {
+                error_log('Require output when including psicologo controller (early-dispatch): ' . substr($requireOutput, 0, 1000));
+            }
+            if (class_exists('PsicologoController')) {
+                // Limpiar buffers para evitar garbage antes del PDF/Excel
+                while (ob_get_level()) {
+                    @ob_end_clean();
+                }
+                $ctrl = new PsicologoController();
+                $ctrl->estadisticas(); // internamente detecta export y genera salida
+                exit;
+            }
+        }
+    }
+
     // Exportaciones del panel del paciente (historial / gráfica) antes del layout
     if ($paginaEarly === 'public' && $accionEarly === 'panel' && isset($_GET['export'])) {
         $filePublic = $contenido->obtenerContenido('public');

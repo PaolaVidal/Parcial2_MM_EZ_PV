@@ -96,9 +96,18 @@
     </tr>
   </thead>
   <tbody>
-    <?php foreach ($masSolic as $m): ?>
+    <?php
+    // Crear mapa id->nombre a partir de $psicologos para fallback seguro
+    $psMap = [];
+    foreach ($psicologos as $pp) {
+      $psMap[(int) $pp['id']] = $pp['nombre'] ?? ($pp['nombre'] ?? '');
+    }
+    foreach ($masSolic as $m):
+      $idPs = (int) ($m['id_psicologo'] ?? $m['id'] ?? 0);
+      $nombre = $m['nombre'] ?? ($psMap[$idPs] ?? $idPs);
+      ?>
       <tr>
-        <td><?= htmlspecialchars($m['nombre'] ?? ($m['id_psicologo'] ?? '')) ?></td>
+        <td><?= htmlspecialchars($nombre) ?></td>
         <td><?= $m['total'] ?? $m['citas'] ?? '' ?></td>
       </tr>
     <?php endforeach; ?>

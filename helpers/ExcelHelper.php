@@ -13,8 +13,9 @@ class ExcelHelper
      */
     public static function exportarCSV(array $data, string $filename, array $headers = []): void
     {
-        if (ob_get_level())
-            ob_end_clean();
+        while (ob_get_level()) {
+            @ob_end_clean();
+        }
 
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
@@ -43,8 +44,9 @@ class ExcelHelper
      */
     public static function exportarMultiplesSecciones(array $sheets, string $filename): void
     {
-        if (ob_get_level())
-            ob_end_clean();
+        while (ob_get_level()) {
+            @ob_end_clean();
+        }
 
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
@@ -310,6 +312,10 @@ class ExcelHelper
         // Enviar archivo
         if (ob_get_level())
             ob_end_clean();
+        // Ensure buffers cleared before sending binary XLSX
+        while (ob_get_level()) {
+            @ob_end_clean();
+        }
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . $filename . '.xlsx"');
         header('Content-Length: ' . filesize($zipFile));

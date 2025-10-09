@@ -207,4 +207,35 @@ class CitaController extends BaseController
         $this->safeRedirect(RUTA . 'cita/pendientes');
         return;
     }
+
+    // /cita/pdf/{id} - Genera un PDF de la cita (comprobante)
+    public function pdf($id = 0): void
+    {
+        $id = (int) $id;
+        if ($id <= 0) {
+            http_response_code(400);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'ID inválido';
+            return;
+        }
+        $citaModel = new Cita();
+        $cita = $citaModel->obtener($id);
+        if (!$cita) {
+            http_response_code(404);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Cita no encontrada';
+            return;
+        }
+        $paciente = (new Paciente())->getById((int) $cita['id_paciente']);
+        $psico = (new Psicologo())->get((int) $cita['id_psicologo']);
+        require_once __DIR__ . '/../helpers/PDFHelper.php';
+        try {
+            PDFHelper::generarCitaPDF($cita, $paciente, $psico);
+        } catch (Exception $e) {
+            error_log('CitaController::pdf error: ' . $e->getMessage());
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Error generando PDF';
+        }
+    }
 }
