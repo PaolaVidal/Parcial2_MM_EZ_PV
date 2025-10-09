@@ -19,11 +19,12 @@
   <div class="card-body py-2">
   <form method="post" action="<?= RUTA ?>pago/crearPendientePorCita" class="row g-2 align-items-end">
       <div class="col-md-5">
-        <label class="form-label small mb-0">Cita (realizada sin pago)</label>
+  <label class="form-label small mb-0">Cita (realizada)</label>
         <select name="id_cita" class="form-select form-select-sm" required>
           <option value="">Seleccione una cita...</option>
           <?php foreach ($citasSinPago as $c): ?>
-            <?php $label = '#'.(int)$c['id'].' — '.htmlspecialchars(substr($c['fecha_hora'],0,16)).' — '.htmlspecialchars($c['paciente_nombre']?:$c['psicologo_nombre']); ?>
+            <?php $pac = htmlspecialchars($c['paciente_nombre'] ?? ''); $ps = htmlspecialchars($c['psicologo_nombre'] ?? '');
+                  $label = '#'.(int)$c['id'].' — '.htmlspecialchars(substr($c['fecha_hora'],0,16)).' — '.($pac ? $pac : ($ps ? $ps : 'Sin nombre')) . ($pac && $ps ? ' / ' . $ps : ''); ?>
             <option value="<?= (int)$c['id'] ?>"><?= $label ?></option>
           <?php endforeach; ?>
         </select>

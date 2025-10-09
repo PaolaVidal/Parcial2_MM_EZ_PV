@@ -623,11 +623,10 @@ class AdminController extends BaseController
             $pdo = $citaModel->pdo();
             $st = $pdo->prepare("SELECT c.id, c.fecha_hora, COALESCE(p.nombre, '') as paciente_nombre, COALESCE(u.nombre, '') as psicologo_nombre
                                      FROM Cita c
-                                     LEFT JOIN Pago pay ON pay.id_cita = c.id
                                      LEFT JOIN Paciente p ON p.id = c.id_paciente
                                      LEFT JOIN Psicologo ps ON ps.id = c.id_psicologo
                                      LEFT JOIN Usuario u ON u.id = ps.id_usuario
-                                     WHERE c.estado_cita = 'realizada' AND pay.id IS NULL
+                                     WHERE c.estado_cita = 'realizada'
                                      ORDER BY c.fecha_hora DESC LIMIT 200");
             $st->execute();
             $citasSinPago = $st->fetchAll(PDO::FETCH_ASSOC);
