@@ -6,17 +6,23 @@ require_once __DIR__ . '/../Models/Cita.php';
 require_once __DIR__ . '/../Models/Pago.php';
 require_once __DIR__ . '/../Models/HorarioPsicologo.php';
 require_once __DIR__ . '/../Models/SolicitudCambio.php';
+require_once __DIR__ . '/BaseController.php';
 
-class AdminController {
+class AdminController extends BaseController
+{
     private string $viewsPath;
 
-    public function __construct(){
+    public function __construct()
+    {
         $this->viewsPath = __DIR__ . '/../Views/admin/';
     }
 
-    private function requireAdmin(){
-        if(!isset($_SESSION['usuario']) || ($_SESSION['usuario']['rol']??'')!=='admin'){
-            http_response_code(403); echo '<div class="alert alert-danger">Acceso denegado</div>'; exit;
+    protected function requireAdmin(): void
+    {
+        if (!isset($_SESSION['usuario']) || ($_SESSION['usuario']['rol'] ?? '') !== 'admin') {
+            http_response_code(403);
+            echo '<div class="alert alert-danger">Acceso denegado</div>';
+            exit;
         }
     }
 
