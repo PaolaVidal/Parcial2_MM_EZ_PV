@@ -40,6 +40,18 @@ class AdminController extends BaseController
     public function dashboard(): void
     {
         $this->requireAdmin();
+        // Defaults to avoid undefined variable warnings (will be overwritten)
+        $usuariosCounts = ['activo' => 0, 'inactivo' => 0];
+        $citaStats = [];
+        $totalPacientes = 0;
+        $pacientesActivos = 0;
+        $citasMes = 0;
+        $citasPendientes = 0;
+        $ingresosMes = 0.0;
+        $pagosPagados = 0;
+        $proximasCitas = [];
+        $pagosPendientesLista = [];
+        // Inicializaciones restauradas (se habían perdido en un refactor previo)
         $usuarioModel = new Usuario();
         $pacienteModel = new Paciente();
         $citaModel = new Cita();
@@ -49,62 +61,52 @@ class AdminController extends BaseController
         $usuariosCounts = $usuarioModel->conteoActivosInactivos();
         $citaStats = $citaModel->estadisticasEstado();
 
-        // Datos adicionales para el dashboard mejorado
-        $totalPacientes = count($pacienteModel->listarTodos());
-        $pacientesActivos = count(array_filter($pacienteModel->listarTodos(), fn($p) => ($p['estado'] ?? 'activo') === 'activo'));
+        // Pacientes
+        $listaPacientes = method_exists($pacienteModel, 'listarTodos') ? $pacienteModel->listarTodos() : [];
+        $totalPacientes = count($listaPacientes);
+        $pacientesActivos = count(array_filter($listaPacientes, fn($p) => ($p['estado'] ?? 'activo') === 'activo'));
 
         // Citas del mes actual
         $inicioMes = date('Y-m-01');
         $finMes = date('Y-m-t');
-        $todasCitas = method_exists($citaModel, 'citasPorRango') ? $citaModel->citasPorRango($inicioMes, $finMes) : [];
-        $citasMes = count($todasCitas);
-        $citasPendientes = count(array_filter($todasCitas, fn($c) => $c['estado_cita'] === 'pendiente'));
+        $todasCitasMes = method_exists($citaModel, 'citasPorRango') ? $citaModel->citasPorRango($inicioMes, $finMes) : [];
+        $citasMes = count($todasCitasMes);
+        $citasPendientes = count(array_filter($todasCitasMes, fn($c) => ($c['estado_cita'] ?? '') === 'pendiente'));
 
-        // Ingresos del mes
+        // Ingresos del mes actual (a partir de ingresosPorMes del modelo Pago)
         $ingresosMesData = $pagoModel->ingresosPorMes((int) date('Y'));
         $mesActual = (int) date('m');
-        $ingresosMes = 0;
+        $ingresosMes = 0.0;
         foreach ($ingresosMesData as $im) {
-            if ((int) substr($im['mes'], 0, 2) === $mesActual) {
-                $ingresosMes = $im['total'];
+            if ((int) $im['mes'] === $mesActual || (int) substr($im['mes'], 0, 2) === $mesActual) { // soporta formatos '05' o '05-2025'
+                $ingresosMes = (float) $im['total'];
                 break;
             }
         }
 
-        // Pagos completados
+        // Pagos pagados totales
         $todosPagos = method_exists($pagoModel, 'listarTodos') ? $pagoModel->listarTodos() : [];
         $pagosPagados = count(array_filter($todosPagos, fn($p) => ($p['estado_pago'] ?? '') === 'pagado'));
 
-        // Citas próximas (con JOIN a paciente y psicologo)
+        // Próximas citas (5 próximas pendientes)
         $pdo = $citaModel->pdo();
-        $stProx = $pdo->query("
-            SELECT c.*, 
-                   pac.nombre as paciente_nombre,
-                   u.nombre as psicologo_nombre
-            FROM Cita c
-            LEFT JOIN Paciente pac ON c.id_paciente = pac.id
-            LEFT JOIN Psicologo ps ON c.id_psicologo = ps.id
-            LEFT JOIN Usuario u ON ps.id_usuario = u.id
-            WHERE c.fecha_hora >= NOW() 
-              AND c.estado_cita = 'pendiente'
-            ORDER BY c.fecha_hora ASC
-            LIMIT 5
-        ");
-        $proximasCitas = $stProx->fetchAll(PDO::FETCH_ASSOC);
+        $stProx = $pdo->query("SELECT c.*, pac.nombre AS paciente_nombre, u.nombre AS psicologo_nombre
+                                FROM Cita c
+                                LEFT JOIN Paciente pac ON pac.id = c.id_paciente
+                                LEFT JOIN Psicologo ps ON ps.id = c.id_psicologo
+                                LEFT JOIN Usuario u ON u.id = ps.id_usuario
+                                WHERE c.fecha_hora >= NOW() AND c.estado_cita='pendiente'
+                                ORDER BY c.fecha_hora ASC LIMIT 5");
+        $proximasCitas = $stProx ? $stProx->fetchAll(PDO::FETCH_ASSOC) : [];
 
-        // Pagos pendientes (con JOIN a paciente)
-        $stPagos = $pdo->query("
-            SELECT p.*, 
-                   pac.nombre as paciente_nombre
-            FROM Pago p
-            LEFT JOIN Cita c ON p.id_cita = c.id
-            LEFT JOIN Paciente pac ON c.id_paciente = pac.id
-            WHERE p.estado_pago = 'pendiente'
-            ORDER BY p.fecha DESC
-            LIMIT 5
-        ");
-        $pagosPendientesLista = $stPagos->fetchAll(PDO::FETCH_ASSOC);
-
+        // Pagos pendientes (5 más recientes)
+        $stPend = $pdo->query("SELECT p.*, pac.nombre AS paciente_nombre
+                               FROM Pago p
+                               LEFT JOIN Cita c ON c.id = p.id_cita
+                               LEFT JOIN Paciente pac ON pac.id = c.id_paciente
+                               WHERE p.estado_pago='pendiente'
+                               ORDER BY p.fecha DESC LIMIT 5");
+        $pagosPendientesLista = $stPend ? $stPend->fetchAll(PDO::FETCH_ASSOC) : [];
         $this->render('dashboard', [
             'usuariosCounts' => $usuariosCounts,
             'citaStats' => $citaStats,
@@ -862,6 +864,12 @@ class AdminController extends BaseController
         // Lista de psicólogos para el filtro
         $psicologosLista = $psicologoModel->listarActivos();
 
+        // Datasets adicionales para nuevas gráficas/reportes
+        $usuariosActivosInactivos = (new Usuario())->conteoActivosInactivos();
+        $citasPorPsicologoGlobal = (new Cita())->citasPorPsicologo();
+        $pacientesPorPsicologo = (new Cita())->pacientesAtendidosPorPsicologo();
+        $ingresosPorEspecialidadComparativo = (new Pago())->ingresosPorEspecialidad();
+
         $this->render('estadisticas', [
             'anio' => $anio,
             'mes' => $mes,
@@ -873,7 +881,12 @@ class AdminController extends BaseController
             'topPsicologos' => $topPsicologos,
             'topPacientes' => $topPacientes,
             'horariosCompletos' => $horariosCompletos,
-            'psicologos' => $psicologosLista
+            'psicologos' => $psicologosLista,
+            // Nuevos datasets
+            'usuariosActivosInactivos' => $usuariosActivosInactivos,
+            'citasPorPsicologoGlobal' => $citasPorPsicologoGlobal,
+            'pacientesPorPsicologo' => $pacientesPorPsicologo,
+            'ingresosPorEspecialidadComparativo' => $ingresosPorEspecialidadComparativo
         ]);
     }
 
@@ -920,7 +933,148 @@ class AdminController extends BaseController
         }
         $whereSQL = implode(' AND ', $where);
 
-        // Obtener datos
+        // Soporte de exportes individualizados adicionales:
+        // formatos especiales esperados:
+        // pdf_pacientes_psicologo / excel_pacientes_psicologo
+        // pdf_disponibilidad / excel_disponibilidad
+        // pdf_citas_rango / excel_citas_rango  (requiere GET['inicio'], GET['fin'])
+        // pdf_ingresos_mes / excel_ingresos_mes
+
+        $formatoLower = strtolower($formato);
+
+        // Rango fechas si se solicita citas_rango
+        $inicioRango = $_GET['inicio'] ?? null;
+        $finRango = $_GET['fin'] ?? null;
+
+        // Acceso a modelos para reportes individuales
+        $citaRptModel = new Cita();
+        $pagoRptModel = new Pago();
+        $psicoRptModel = new Psicologo();
+        $usrRptModel = new Usuario();
+        $horarioRptModel = new HorarioPsicologo();
+
+        // Export individual: pacientes atendidos por psicólogo (tabla global)
+        if (in_array($formatoLower, ['pdf_pacientes_psicologo', 'excel_pacientes_psicologo'], true)) {
+            $pacientesPsico = $citaRptModel->pacientesAtendidosPorPsicologo();
+            if ($formatoLower === 'excel_pacientes_psicologo') {
+                $data = [['Psicólogo', 'Pacientes Únicos']];
+                foreach ($pacientesPsico as $r) {
+                    $data[] = [$r['psicologo'], $r['pacientes_unicos']];
+                }
+                ExcelHelper::exportarMultiplesHojas([
+                    ['titulo' => 'PACIENTES_X_PSICO', 'data' => $data]
+                ], 'reporte_pacientes_psicologo_' . date('Ymd'));
+                return;
+            }
+            // PDF
+            $rows = '';
+            foreach ($pacientesPsico as $r) {
+                $rows .= '<tr><td>' . htmlspecialchars($r['psicologo'], ENT_QUOTES, 'UTF-8') . '</td><td style="text-align:right">' . (int) $r['pacientes_unicos'] . '</td></tr>';
+            }
+            if ($rows === '')
+                $rows = '<tr><td colspan="2">Sin datos</td></tr>';
+            $html = '<html><head><meta charset="utf-8"><style>body{font-family:DejaVu Sans,Arial,sans-serif;font-size:11px;margin:18px}h1{margin:0 0 10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px;font-size:11px}th{background:#f2f2f2;text-align:left}</style></head><body><h1>Reporte de Pacientes Atendidos por Psicólogo</h1><table><thead><tr><th>Psicólogo</th><th>Pacientes Únicos</th></tr></thead><tbody>' . $rows . '</tbody></table></body></html>';
+            PDFHelper::generarPDF($html, 'Pacientes_Por_Psicologo_' . date('Ymd'), 'portrait', 'letter', true);
+            return;
+        }
+
+        // Export individual: disponibilidad de horarios
+        if (in_array($formatoLower, ['pdf_disponibilidad', 'excel_disponibilidad'], true)) {
+            $psList = $psicoRptModel->listarTodos();
+            $dataDisp = [['Psicólogo', 'Bloques Horario', 'Detalle']];
+            $rowsPdf = '';
+            foreach ($psList as $ps) {
+                $hor = $horarioRptModel->listarPorPsicologo($ps['id']);
+                $detalle = [];
+                foreach ($hor as $h) {
+                    $detalle[] = ucfirst($h['dia_semana']) . ' ' . substr($h['hora_inicio'], 0, 5) . '-' . substr($h['hora_fin'], 0, 5);
+                }
+                $detalleStr = $detalle ? implode(', ', $detalle) : 'Sin horarios';
+                $dataDisp[] = [$ps['nombre'], count($hor), $detalleStr];
+                $rowsPdf .= '<tr><td>' . htmlspecialchars($ps['nombre'], ENT_QUOTES, 'UTF-8') . '</td><td style="text-align:right">' . count($hor) . '</td><td>' . htmlspecialchars($detalleStr, ENT_QUOTES, 'UTF-8') . '</td></tr>';
+            }
+            if ($formatoLower === 'excel_disponibilidad') {
+                ExcelHelper::exportarMultiplesHojas([
+                    ['titulo' => 'DISPONIBILIDAD', 'data' => $dataDisp]
+                ], 'reporte_disponibilidad_' . date('Ymd'));
+                return;
+            }
+            if ($rowsPdf === '')
+                $rowsPdf = '<tr><td colspan="3">Sin datos</td></tr>';
+            $html = '<html><head><meta charset="utf-8"><style>body{font-family:DejaVu Sans,Arial,sans-serif;font-size:11px;margin:18px}h1{margin:0 0 10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px;font-size:10px}th{background:#f2f2f2;text-align:left}</style></head><body><h1>Reporte de Disponibilidad de Horarios</h1><table><thead><tr><th>Psicólogo</th><th>Bloques</th><th>Detalle</th></tr></thead><tbody>' . $rowsPdf . '</tbody></table></body></html>';
+            PDFHelper::generarPDF($html, 'Disponibilidad_Horarios_' . date('Ymd'), 'landscape', 'letter', true);
+            return;
+        }
+
+        // Export individual: citas por rango
+        if (in_array($formatoLower, ['pdf_citas_rango', 'excel_citas_rango'], true)) {
+            if (!$inicioRango || !$finRango) {
+                // Respuesta simple
+                $html = '<html><body><strong>Debe especificar parámetros inicio y fin (YYYY-mm-dd).</strong></body></html>';
+                PDFHelper::generarPDF($html, 'Citas_Rango_ERROR', 'portrait', 'letter', true);
+                return;
+            }
+            $citasRango = $citaRptModel->citasPorRangoDetallado($inicioRango . ' 00:00:00', $finRango . ' 23:59:59');
+            if ($formatoLower === 'excel_citas_rango') {
+                $data = [['ID', 'Fecha', 'Hora', 'Paciente', 'Psicólogo', 'Estado']];
+                foreach ($citasRango as $c) {
+                    $data[] = [
+                        $c['id'],
+                        date('d/m/Y', strtotime($c['fecha_hora'])),
+                        date('H:i', strtotime($c['fecha_hora'])),
+                        $c['paciente'] ?? '',
+                        $c['psicologo'] ?? '',
+                        $c['estado_cita'] ?? ''
+                    ];
+                }
+                ExcelHelper::exportarMultiplesHojas([
+                    ['titulo' => 'CITAS_RANGO', 'data' => $data]
+                ], 'reporte_citas_rango_' . date('Ymd'));
+                return;
+            }
+            $rows = '';
+            foreach ($citasRango as $c) {
+                $rows .= '<tr>'
+                    . '<td>' . (int) $c['id'] . '</td>'
+                    . '<td>' . date('d/m/Y', strtotime($c['fecha_hora'])) . '</td>'
+                    . '<td>' . date('H:i', strtotime($c['fecha_hora'])) . '</td>'
+                    . '<td>' . htmlspecialchars($c['paciente'] ?? '', ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td>' . htmlspecialchars($c['psicologo'] ?? '', ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td>' . htmlspecialchars($c['estado_cita'] ?? '', ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '</tr>';
+            }
+            if ($rows === '')
+                $rows = '<tr><td colspan="6">Sin datos en el rango</td></tr>';
+            $html = '<html><head><meta charset="utf-8"><style>body{font-family:DejaVu Sans,Arial,sans-serif;font-size:10px;margin:18px}h1{margin:0 0 10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px;font-size:9px}th{background:#f0f0f0}</style></head><body><h1>Reporte de Citas (' . htmlspecialchars($inicioRango) . ' a ' . htmlspecialchars($finRango) . ')</h1><table><thead><tr><th>ID</th><th>Fecha</th><th>Hora</th><th>Paciente</th><th>Psicólogo</th><th>Estado</th></tr></thead><tbody>' . $rows . '</tbody></table></body></html>';
+            PDFHelper::generarPDF($html, 'Citas_Rango_' . date('Ymd'), 'portrait', 'letter', true);
+            return;
+        }
+
+        // Export individual: ingresos por mes (listado simple)
+        if (in_array($formatoLower, ['pdf_ingresos_mes', 'excel_ingresos_mes'], true)) {
+            $ingMes = $pagoRptModel->ingresosPorMes($anio);
+            if ($formatoLower === 'excel_ingresos_mes') {
+                $data = [['Mes', 'Ingresos']];
+                foreach ($ingMes as $im) {
+                    $data[] = [$im['mes'], number_format($im['total'], 2)];
+                }
+                ExcelHelper::exportarMultiplesHojas([
+                    ['titulo' => 'INGRESOS_MES', 'data' => $data]
+                ], 'reporte_ingresos_mes_' . $anio . '_' . date('Ymd'));
+                return;
+            }
+            $rows = '';
+            foreach ($ingMes as $im) {
+                $rows .= '<tr><td>' . htmlspecialchars($im['mes']) . '</td><td style="text-align:right">$' . number_format($im['total'], 2) . '</td></tr>';
+            }
+            if ($rows === '')
+                $rows = '<tr><td colspan="2">Sin ingresos</td></tr>';
+            $html = '<html><head><meta charset="utf-8"><style>body{font-family:DejaVu Sans,Arial,sans-serif;font-size:11px;margin:18px}h1{margin:0 0 10px}table{width:60%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px}th{background:#f2f2f2;text-align:left}</style></head><body><h1>Reporte de Ingresos por Mes - ' . (int) $anio . '</h1><table><thead><tr><th>Mes</th><th>Ingresos</th></tr></thead><tbody>' . $rows . '</tbody></table></body></html>';
+            PDFHelper::generarPDF($html, 'Ingresos_Mes_' . $anio . '_' . date('Ymd'), 'portrait', 'letter', true);
+            return;
+        }
+
+        // Obtener datos básicos (flujo original)
         $stCitas = $pdo->prepare("
             SELECT 
                 c.id,
@@ -941,6 +1095,15 @@ class AdminController extends BaseController
         ");
         $stCitas->execute($params);
         $citas = $stCitas->fetchAll(PDO::FETCH_ASSOC);
+
+        // Datos adicionales solicitados
+        $usuarioModel = new Usuario();
+        $usuariosActivosInactivos = $usuarioModel->conteoActivosInactivos();
+        $citaStatsModel = new Cita();
+        $citasPorPsicoGlobal = $citaStatsModel->citasPorPsicologo();
+        $pacientesPorPsico = $citaStatsModel->pacientesAtendidosPorPsicologo();
+        $pagoModel = new Pago();
+        $ingresosPorEspecialidad = $pagoModel->ingresosPorEspecialidad();
 
         if ($formato === 'pdf' || $formato === 'pdf_graficas' || $formato === 'pdf_datos') {
             // Calcular estadísticas (común para PDFs)
@@ -989,7 +1152,7 @@ class AdminController extends BaseController
             arsort($porPsicologo);
             $topPsicologos = array_slice($porPsicologo, 0, 5, true);
 
-            // Generar HTML para el PDF (compatible con DomPDF)
+            // Generar HTML para el PDF (compatible con DomPDF) - secciones ampliadas
             $html = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
 <head>
@@ -1081,7 +1244,68 @@ class AdminController extends BaseController
             $html .= '</tbody>
     </table>
     
+    <h2>Usuarios Activos vs Inactivos</h2>
+    <table>
+        <thead><tr><th>Estado</th><th>Cantidad</th></tr></thead>
+        <tbody>
+            <!--UA_ROWS-->
+        </tbody>
+    </table>
+
+    <h2>Pacientes Atendidos por Psicologo</h2>
+    <table>
+        <thead><tr><th>Psicologo</th><th class="text-center">Pacientes Unicos</th></tr></thead>
+        <tbody>
+            <!--PAC_PSICO_ROWS-->
+        </tbody>
+    </table>
+
+    <h2>Citas por Psicologo (Global)</h2>
+    <table>
+        <thead><tr><th>Psicologo</th><th class="text-center">Total Citas</th></tr></thead>
+        <tbody>
+            <!--CITAS_PSICO_ROWS-->
+        </tbody>
+    </table>
+
+    <h2>Ingresos por Especialidad</h2>
+    <table>
+        <thead><tr><th>Especialidad</th><th class="text-right">Ingresos</th></tr></thead>
+        <tbody>
+            <!--ING_ESP_ROWS-->
+        </tbody>
+    </table>
+
     <div class="page-break"></div>';
+
+            $uaRows = '<tr><td>Activos</td><td class="text-right">' . (int) $usuariosActivosInactivos['activo'] . '</td></tr>' .
+                '<tr><td>Inactivos</td><td class="text-right">' . (int) $usuariosActivosInactivos['inactivo'] . '</td></tr>';
+            $html = str_replace('<!--UA_ROWS-->', $uaRows, $html);
+
+            $pacRows = '';
+            foreach ($pacientesPorPsico as $r) {
+                $pacRows .= '<tr><td>' . htmlspecialchars($r['psicologo'], ENT_QUOTES, 'UTF-8') . '</td><td class="text-center">' . (int) $r['pacientes_unicos'] . '</td></tr>';
+            }
+            if ($pacRows === '')
+                $pacRows = '<tr><td colspan="2">Sin datos</td></tr>';
+            $html = str_replace('<!--PAC_PSICO_ROWS-->', $pacRows, $html);
+
+            $citasRows = '';
+            foreach ($citasPorPsicoGlobal as $r) {
+                $citasRows .= '<tr><td>' . htmlspecialchars($r['psicologo'], ENT_QUOTES, 'UTF-8') . '</td><td class="text-center">' . (int) $r['total'] . '</td></tr>';
+            }
+            if ($citasRows === '')
+                $citasRows = '<tr><td colspan="2">Sin datos</td></tr>';
+            $html = str_replace('<!--CITAS_PSICO_ROWS-->', $citasRows, $html);
+
+            $ingEspRows = '';
+            foreach ($ingresosPorEspecialidad as $r) {
+                $esp = $r['especialidad'] ?: 'N/D';
+                $ingEspRows .= '<tr><td>' . htmlspecialchars($esp, ENT_QUOTES, 'UTF-8') . '</td><td class="text-right">$' . number_format((float) $r['total'], 2) . '</td></tr>';
+            }
+            if ($ingEspRows === '')
+                $ingEspRows = '<tr><td colspan="2">Sin datos</td></tr>';
+            $html = str_replace('<!--ING_ESP_ROWS-->', $ingEspRows, $html);
 
             // Generar gráficas con ChartHelper (ya validamos GD arriba)
             // 1. Citas por mes
@@ -1139,6 +1363,42 @@ class AdminController extends BaseController
             $ingresosData = array_map('floatval', array_column($ingresosPorMesData, 'total'));
             $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos por Mes', 700, 300);
 
+            // 4. Grafico comparativo ingresos por especialidad (bar)
+            $labelsEsp = array_map(fn($r) => $r['especialidad'] ?: 'N/D', $ingresosPorEspecialidad);
+            $dataEsp = array_map(fn($r) => (float) $r['total'], $ingresosPorEspecialidad);
+            $chartIngresosEspecialidad = ChartHelper::generarBarChart($dataEsp, $labelsEsp, 'Ingresos por Especialidad', 700, 300);
+
+            // 5. Usuarios activos vs inactivos (pie)
+            $usuariosAI = (new Usuario())->conteoActivosInactivos();
+            $uaLabels = ['Activos', 'Inactivos'];
+            $uaData = [(int) $usuariosAI['activo'], (int) $usuariosAI['inactivo']];
+            $chartUsuariosAI = ChartHelper::generarPieChart($uaData, $uaLabels, 'Usuarios Activos/Inactivos', 500, 350);
+
+            // 6. Citas por psicólogo (bar) y Pacientes por psicólogo (bar)
+            $citasPsico = (new Cita())->citasPorPsicologo();
+            $labelsPsico = array_map(fn($r) => $r['psicologo'], $citasPsico);
+            $dataCitasPsico = array_map(fn($r) => (int) $r['total'], $citasPsico);
+            $chartCitasPsico = ChartHelper::generarBarChart($dataCitasPsico, $labelsPsico, 'Citas por Psicologo', 700, 300);
+
+            $pacPsico = (new Cita())->pacientesAtendidosPorPsicologo();
+            $labelsPacPsico = array_map(fn($r) => $r['psicologo'], $pacPsico);
+            $dataPacPsico = array_map(fn($r) => (int) $r['pacientes_unicos'], $pacPsico);
+            $chartPacPsico = ChartHelper::generarBarChart($dataPacPsico, $labelsPacPsico, 'Pacientes por Psicologo', 700, 300);
+
+            // 7. Atendidas vs Canceladas (doughnut) usando estados ya consultados
+            $realizadasCnt = 0;
+            $canceladasCnt = 0;
+            foreach ($citasPorEstadoData as $e) {
+                if (($e['estado'] ?? $e['estado_cita'] ?? '') === 'realizada')
+                    $realizadasCnt += (int) $e['total'];
+                if (($e['estado'] ?? $e['estado_cita'] ?? '') === 'cancelada')
+                    $canceladasCnt += (int) $e['total'];
+            }
+            $chartAtendidasCanceladas = ChartHelper::generarPieChart([
+                $realizadasCnt,
+                $canceladasCnt
+            ], ['Atendidas', 'Canceladas'], 'Atendidas vs Canceladas', 500, 350);
+
             // Si el formato es solo gráficas debemos generar un PDF minimalista: solo header + gráficas + footer
             if ($soloGraficas) {
                 // Preparar textos seguros para interpolación
@@ -1175,6 +1435,21 @@ class AdminController extends BaseController
     </div>
     <div style="text-align: center; margin-bottom: 20px;">
         <img src="{$chartIngresos}" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{$chartIngresosEspecialidad}" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{$chartUsuariosAI}" style="width: 80%; max-width: 500px; margin-bottom: 15px;">
+    </div>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{$chartCitasPsico}" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{$chartPacPsico}" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{$chartAtendidasCanceladas}" style="width: 80%; max-width: 500px; margin-bottom: 15px;">
     </div>
     <div class="page-break"></div>
 
@@ -1414,6 +1689,31 @@ HTML;
                 }
             }
 
+            // Hojas adicionales solicitadas
+            $dataUsuariosAI = [['Estado', 'Cantidad'], ['Activos', (int) $usuariosActivosInactivos['activo']], ['Inactivos', (int) $usuariosActivosInactivos['inactivo']]];
+
+            $dataPacientesPsico = [['Psicólogo', 'Pacientes Únicos']];
+            foreach ($pacientesPorPsico as $r) {
+                $dataPacientesPsico[] = [$r['psicologo'], $r['pacientes_unicos']];
+            }
+
+            $dataCitasPsico = [['Psicólogo', 'Total Citas']];
+            foreach ($citasPorPsicoGlobal as $r) {
+                $dataCitasPsico[] = [$r['psicologo'], $r['total']];
+            }
+
+            $dataIngresosEsp = [['Especialidad', 'Ingresos']];
+            foreach ($ingresosPorEspecialidad as $r) {
+                $dataIngresosEsp[] = [$r['especialidad'] ?: 'N/D', '$' . number_format((float) $r['total'], 2)];
+            }
+
+            // Resumen disponibilidad (conteo bloques por psicologo)
+            $dataDisponibilidad = [['Psicólogo', 'Bloques Horario']];
+            foreach ($psicologos as $ps) {
+                $horarios = $horarioModel->listarPorPsicologo($ps['id']);
+                $dataDisponibilidad[] = [$ps['nombre'], count($horarios)];
+            }
+
             // Crear archivo Excel con todas las hojas
             $hojas = [
                 ['titulo' => 'RESUMEN', 'data' => $dataResumen],
@@ -1422,7 +1722,12 @@ HTML;
                 ['titulo' => 'INGRESOS POR MES', 'data' => $dataIngresos],
                 ['titulo' => 'TOP 10 PSICOLOGOS', 'data' => $dataPsicologos],
                 ['titulo' => 'TOP 10 PACIENTES', 'data' => $dataPacientes],
-                ['titulo' => 'HORARIOS', 'data' => $dataHorarios]
+                ['titulo' => 'HORARIOS', 'data' => $dataHorarios],
+                ['titulo' => 'USUARIOS A/I', 'data' => $dataUsuariosAI],
+                ['titulo' => 'PACIENTES X PSICO', 'data' => $dataPacientesPsico],
+                ['titulo' => 'CITAS X PSICO', 'data' => $dataCitasPsico],
+                ['titulo' => 'ING X ESPECIALIDAD', 'data' => $dataIngresosEsp],
+                ['titulo' => 'DISPONIBILIDAD', 'data' => $dataDisponibilidad]
             ];
 
             ExcelHelper::exportarMultiplesHojas($hojas, 'estadisticas_admin_' . $anio . ($mes ? '_' . $mes : ''));

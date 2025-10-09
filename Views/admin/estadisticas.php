@@ -18,6 +18,59 @@ $mesActual = date('m');
   </div>
 </div>
 
+<!-- Reportes Individuales -->
+<div class="card mb-4">
+  <div class="card-header bg-secondary text-white">
+    <i class="fas fa-file-export me-2"></i>Reportes Individuales (PDF / Excel)
+  </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label small fw-bold">Pacientes Atendidos por Psicólogo</label>
+        <div class="btn-group w-100">
+          <button class="btn btn-outline-danger btn-sm w-50" onclick="exportIndividual('pdf_pacientes_psicologo')"><i
+              class="fas fa-file-pdf"></i></button>
+          <button class="btn btn-outline-success btn-sm w-50" onclick="exportIndividual('excel_pacientes_psicologo')"><i
+              class="fas fa-file-excel"></i></button>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-bold">Disponibilidad de Horarios</label>
+        <div class="btn-group w-100">
+          <button class="btn btn-outline-danger btn-sm w-50" onclick="exportIndividual('pdf_disponibilidad')"><i
+              class="fas fa-file-pdf"></i></button>
+          <button class="btn btn-outline-success btn-sm w-50" onclick="exportIndividual('excel_disponibilidad')"><i
+              class="fas fa-file-excel"></i></button>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-bold">Ingresos por Mes (Año filtro)</label>
+        <div class="btn-group w-100">
+          <button class="btn btn-outline-danger btn-sm w-50" onclick="exportIndividual('pdf_ingresos_mes')"><i
+              class="fas fa-file-pdf"></i></button>
+          <button class="btn btn-outline-success btn-sm w-50" onclick="exportIndividual('excel_ingresos_mes')"><i
+              class="fas fa-file-excel"></i></button>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-bold">Citas por Rango</label>
+        <div class="d-flex gap-2 mb-1">
+          <input type="date" id="rangoInicio" class="form-control form-control-sm" placeholder="Inicio">
+          <input type="date" id="rangoFin" class="form-control form-control-sm" placeholder="Fin">
+        </div>
+        <div class="btn-group w-100">
+          <button class="btn btn-outline-danger btn-sm w-50" onclick="exportCitasRango('pdf')"><i
+              class="fas fa-file-pdf"></i></button>
+          <button class="btn btn-outline-success btn-sm w-50" onclick="exportCitasRango('excel')"><i
+              class="fas fa-file-excel"></i></button>
+        </div>
+      </div>
+    </div>
+    <small class="text-muted d-block mt-2">Los reportes usan los filtros de Año/Mes/Psicólogo actuales (excepto rango
+      que depende de fechas seleccionadas).</small>
+  </div>
+</div>
+
 <!-- Filtros -->
 <div class="card mb-4">
   <div class="card-header bg-primary text-white">
@@ -136,6 +189,62 @@ $mesActual = date('m');
       </div>
       <div class="card-body">
         <canvas id="chartCitasPorEstado" height="250"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="fas fa-users me-2 text-secondary"></i>Usuarios Activos vs Inactivos</h6>
+      </div>
+      <div class="card-body">
+        <canvas id="chartUsuariosAI" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="fas fa-user-md me-2 text-primary"></i>Citas por Psicólogo</h6>
+      </div>
+      <div class="card-body">
+        <canvas id="chartCitasPsicologo" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="fas fa-user-friends me-2 text-warning"></i>Pacientes por Psicólogo</h6>
+      </div>
+      <div class="card-body">
+        <canvas id="chartPacientesPsicologo" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="fas fa-clinic-medical me-2 text-info"></i>Ingresos por Especialidad</h6>
+      </div>
+      <div class="card-body">
+        <canvas id="chartIngresosEspecialidad" height="240"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white">
+        <h6 class="mb-0"><i class="fas fa-balance-scale me-2 text-danger"></i>Atendidas vs Canceladas</h6>
+      </div>
+      <div class="card-body">
+        <canvas id="chartAtendidasCanceladas" height="240"></canvas>
       </div>
     </div>
   </div>
@@ -295,6 +404,10 @@ $mesActual = date('m');
   const citasPorMesData = <?= json_encode($citasPorMes ?? []) ?>;
   const citasPorEstadoData = <?= json_encode($citasPorEstado ?? []) ?>;
   const ingresosPorMesData = <?= json_encode($ingresosPorMes ?? []) ?>;
+  const usuariosAI = <?= json_encode($usuariosActivosInactivos ?? []) ?>;
+  const citasPsicologoGlobal = <?= json_encode($citasPorPsicologoGlobal ?? []) ?>;
+  const pacientesPsicologo = <?= json_encode($pacientesPorPsicologo ?? []) ?>;
+  const ingresosEspecialidad = <?= json_encode($ingresosPorEspecialidadComparativo ?? []) ?>;
 
   // Chart: Citas por Mes
   new Chart(document.getElementById('chartCitasPorMes'), {
@@ -358,6 +471,76 @@ $mesActual = date('m');
     }
   });
 
+  // Chart: Usuarios Activos vs Inactivos
+  const totalUsuariosAI = (usuariosAI.activo ?? 0) + (usuariosAI.inactivo ?? 0);
+  new Chart(document.getElementById('chartUsuariosAI'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Activos', 'Inactivos'],
+      datasets: [{
+        data: [usuariosAI.activo ?? 0, usuariosAI.inactivo ?? 0],
+        backgroundColor: ['#198754', '#6c757d'],
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  // Chart: Citas por Psicólogo (Bar)
+  new Chart(document.getElementById('chartCitasPsicologo'), {
+    type: 'bar',
+    data: {
+      labels: citasPsicologoGlobal.map(r => r.psicologo),
+      datasets: [{
+        label: 'Citas',
+        data: citasPsicologoGlobal.map(r => r.total),
+        backgroundColor: '#0d6efd'
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // Chart: Pacientes por Psicólogo
+  new Chart(document.getElementById('chartPacientesPsicologo'), {
+    type: 'bar',
+    data: {
+      labels: pacientesPsicologo.map(r => r.psicologo),
+      datasets: [{
+        label: 'Pacientes Únicos',
+        data: pacientesPsicologo.map(r => r.pacientes_unicos),
+        backgroundColor: '#ffc107'
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // Chart: Ingresos por Especialidad
+  new Chart(document.getElementById('chartIngresosEspecialidad'), {
+    type: 'bar',
+    data: {
+      labels: ingresosEspecialidad.map(r => r.especialidad || 'N/D'),
+      datasets: [{
+        label: 'Ingresos ($)',
+        data: ingresosEspecialidad.map(r => r.total),
+        backgroundColor: '#17a2b8'
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  // Chart: Atendidas vs Canceladas (derivado de citasPorEstado)
+  const atendidas = citasPorEstadoData.filter(c => c.estado === 'realizada').reduce((a, b) => a + parseInt(b.total), 0);
+  const canceladas = citasPorEstadoData.filter(c => c.estado === 'cancelada').reduce((a, b) => a + parseInt(b.total), 0);
+  new Chart(document.getElementById('chartAtendidasCanceladas'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Atendidas', 'Canceladas'],
+      datasets: [{ data: [atendidas, canceladas], backgroundColor: ['#20c997', '#dc3545'], borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+  });
+
   // Funciones de exportación (evitan duplicar el parámetro url y la doble '?')
   const baseEstadisticasUrl = '<?= url('admin', 'estadisticas') ?>';
 
@@ -383,6 +566,32 @@ $mesActual = date('m');
 
   function exportarExcel() {
     window.location.href = buildExportUrl('excel');
+  }
+
+  // Exportes Individuales
+  function exportIndividual(tipo) {
+    window.open(buildExportUrl(tipo), '_blank');
+  }
+  function exportCitasRango(formato) {
+    const ini = document.getElementById('rangoInicio').value;
+    const fin = document.getElementById('rangoFin').value;
+    if (!ini || !fin) {
+      alert('Seleccione fecha inicio y fin');
+      return;
+    }
+    if (ini > fin) {
+      alert('La fecha inicio no puede ser mayor que la fin');
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.delete('export');
+    params.delete('url');
+    params.set('export', formato === 'pdf' ? 'pdf_citas_rango' : 'excel_citas_rango');
+    params.set('inicio', ini);
+    params.set('fin', fin);
+    const sep = baseEstadisticasUrl.includes('?') ? '&' : '?';
+    const full = baseEstadisticasUrl + sep + params.toString();
+    if (formato === 'pdf') window.open(full, '_blank'); else window.location.href = full;
   }
 </script>
 

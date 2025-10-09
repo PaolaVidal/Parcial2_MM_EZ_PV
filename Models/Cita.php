@@ -194,6 +194,44 @@ class Cita extends BaseModel
         return $this->db->query($sql)->fetchAll();
     }
 
+    /** Cantidad de citas por psicólogo (todas las fechas) */
+    public function citasPorPsicologo(): array
+    {
+        $sql = "SELECT c.id_psicologo, u.nombre psicologo, COUNT(*) total
+                FROM Cita c
+                JOIN Psicologo ps ON ps.id = c.id_psicologo
+                JOIN Usuario u ON u.id = ps.id_usuario
+                GROUP BY c.id_psicologo, u.nombre
+                ORDER BY total DESC";
+        return $this->db->query($sql)->fetchAll();
+    }
+
+    /** Número de pacientes únicos atendidos por cada psicólogo */
+    public function pacientesAtendidosPorPsicologo(): array
+    {
+        $sql = "SELECT c.id_psicologo, u.nombre psicologo, COUNT(DISTINCT c.id_paciente) pacientes_unicos
+                FROM Cita c
+                JOIN Psicologo ps ON ps.id = c.id_psicologo
+                JOIN Usuario u ON u.id = ps.id_usuario
+                GROUP BY c.id_psicologo, u.nombre
+                ORDER BY pacientes_unicos DESC";
+        return $this->db->query($sql)->fetchAll();
+    }
+
+    /** Citas detalladas dentro de un rango de fecha (inclusivo) */
+    public function citasPorRangoDetallado(string $inicio, string $fin): array
+    {
+        $st = $this->db->prepare("SELECT c.*, u.nombre psicologo, p.nombre paciente
+                                   FROM Cita c
+                                   LEFT JOIN Psicologo ps ON ps.id = c.id_psicologo
+                                   LEFT JOIN Usuario u ON u.id = ps.id_usuario
+                                   LEFT JOIN Paciente p ON p.id = c.id_paciente
+                                   WHERE c.fecha_hora BETWEEN ? AND ?
+                                   ORDER BY c.fecha_hora");
+        $st->execute([$inicio, $fin]);
+        return $st->fetchAll();
+    }
+
     public function citasPorRango(string $inicio, string $fin): array
     {
         $st = $this->db->prepare("SELECT * FROM Cita WHERE fecha_hora BETWEEN ? AND ? ORDER BY fecha_hora");
