@@ -17,7 +17,7 @@
 <!-- Quick registrar pago (admin) -->
 <div class="card mb-3">
   <div class="card-body py-2">
-    <form method="post" action="<?= RUTA ?>pago/registrarPorCita" class="row g-2 align-items-end">
+  <form method="post" action="<?= RUTA ?>pago/crearPendientePorCita" class="row g-2 align-items-end">
       <div class="col-md-5">
         <label class="form-label small mb-0">Cita (realizada sin pago)</label>
         <select name="id_cita" class="form-select form-select-sm" required>
@@ -177,6 +177,7 @@
                 <!-- Botón para marcar pago como pagado: redirige a la vista del pago donde se puede marcar pagado -->
                 <form method="post" action="<?= RUTA ?>pago/ver/<?= (int) ($t['id'] ?? 0) ?>" style="display:inline-block; margin-left:6px;">
                   <input type="hidden" name="accion" value="marcar_pagado">
+                  <input type="hidden" name="from" value="tickets">
                   <button class="btn btn-success btn-sm" type="submit"
                     onclick="return confirm('Marcar pago de la cita #<?= (int) $t['id_cita'] ?> como pagado?');"
                     title="Marcar pagado">

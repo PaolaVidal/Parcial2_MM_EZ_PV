@@ -11,9 +11,17 @@ class Pago extends BaseModel
         $ex = $this->obtenerPorCita($idCita);
         if ($ex)
             return (int) $ex['id'];
-        $st = $this->db->prepare("INSERT INTO Pago (id_cita,monto_base,monto_total,estado_pago,estado) VALUES (?,?,?, 'pendiente','activo')");
-        $st->execute([$idCita, $montoBase, $montoBase]);
+        $st = $this->db->prepare("INSERT INTO Pago (id_cita,monto_base,monto_total,estado_pago,estado) VALUES (?,?,?,?,?)");
+        // asegurar valores por defecto
+        $st->execute([$idCita, $montoBase, $montoBase, 'pendiente', 'activo']);
         return (int) $this->db->lastInsertId();
+    }
+
+    /** Forzar estado pendiente en un pago (útil para asegurar comportamiento) */
+    public function marcarPendiente(int $id): bool
+    {
+        $st = $this->db->prepare("UPDATE Pago SET estado_pago='pendiente' WHERE id=?");
+        return $st->execute([$id]);
     }
 
     public function obtener(int $id): ?array
@@ -83,9 +91,15 @@ class Pago extends BaseModel
         $st = $this->db->prepare("SELECT monto_base FROM Pago WHERE id=?");
         $st->execute([$idPago]);
         $base = (float) $st->fetchColumn();
-        $st2 = $this->db->prepare("SELECT COALESCE(SUM(monto),0) FROM PagoExtras WHERE id_pago=?");
-        $st2->execute([$idPago]);
-        $extras = (float) $st2->fetchColumn();
+        try {
+            $st2 = $this->db->prepare("SELECT COALESCE(SUM(monto),0) FROM PagoExtras WHERE id_pago=?");
+            $st2->execute([$idPago]);
+            $extras = (float) $st2->fetchColumn();
+        } catch (PDOException $e) {
+            // Tabla PagoExtras ausente o error SQL: asumir 0 extras y loggear para diagnóstico.
+            error_log('Warning recalcularTotal: no se pudo obtener extras (asumiendo 0): ' . $e->getMessage());
+            $extras = 0.0;
+        }
         $total = $base + $extras;
         $up = $this->db->prepare("UPDATE Pago SET monto_total=? WHERE id=?");
         return $up->execute([$total, $idPago]);

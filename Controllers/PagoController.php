@@ -115,7 +115,13 @@ class PagoController extends BaseController
                 }
             }
 
-            $this->safeRedirect(RUTA . 'pago/ver/' . $id);
+            // Si la petición vino desde la lista de tickets, regresar a admin/tickets
+            $from = $_POST['from'] ?? '';
+            if ($from === 'tickets') {
+                $this->safeRedirect(url('admin', 'tickets'));
+            } else {
+                $this->safeRedirect(RUTA . 'pago/ver/' . $id);
+            }
             return;
         }
 
@@ -209,6 +215,13 @@ class PagoController extends BaseController
             if (!$exists) {
                 // Use crearParaCita but ensure it remains pending: crearParaCita marks pendiente by default
                 $idPago = $pagoModel->crearParaCita($idCita, $monto);
+                // Asegurar explícitamente que el pago quede como 'pendiente'
+                try {
+                    $pagoModel->marcarPendiente($idPago);
+                } catch (Throwable $e) {
+                    // no bloquear en producción; log para diagnóstico
+                    error_log('Warning: no se pudo forzar estado pendiente para pago ' . $idPago . ': ' . $e->getMessage());
+                }
                 // Crear ticket asociado al pago (QR) pero mantener pago pendiente
                 $ticketModel = new TicketPago();
                 $ticket = $ticketModel->obtenerPorPago($idPago);
