@@ -39,7 +39,7 @@
       </div>
       <div class="col-sm-2 d-flex gap-2">
         <button class="btn btn-outline-secondary btn-sm" onclick="limpiarFiltros()">Limpiar</button>
-        <button class="btn btn-outline-primary btn-sm" onclick="refrescarCitas()"><i class="fas fa-sync"></i></button>
+        
       </div>
     </div>
   </div>
@@ -286,7 +286,8 @@
   }
   function limpiarFiltros() {
     ['fEstado', 'fFecha', 'fTexto', 'fPs'].forEach(id => document.getElementById(id).value = '');
-    refrescarCitas();
+    // Aplicar filtrado cliente inmediatamente (no forzamos AJAX)
+    filtrarCitas();
   }
   function refrescarCitas() {
     fetchCitas().then(renderTabla).catch(err => {
