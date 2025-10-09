@@ -2,10 +2,13 @@
 /** Controlador de Autenticación (router: /auth/login, /auth/registrar, /auth/logout) */
 require_once __DIR__ . '/../models/Usuario.php';
 require_once __DIR__ . '/../models/Paciente.php';
+require_once __DIR__ . '/BaseController.php';
 
-class AuthController {
+class AuthController extends BaseController
+{
 
-    private function render(string $vista, array $data = []): void {
+    protected function render($vista, $data = []): void
+    {
         // Ajuste a carpeta "Views" (mayúscula)
         $file = __DIR__ . '/../Views/' . $vista . '.php';
         if (!file_exists($file)) {
@@ -16,27 +19,28 @@ class AuthController {
         require $file;
     }
 
-    public function login(): void {
+    public function login(): void
+    {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $email = trim($_POST['email'] ?? '');
-            $pass  = $_POST['password'] ?? ''; // Asegúrate que la vista usa name="password"
+            $pass = $_POST['password'] ?? ''; // Asegúrate que la vista usa name="password"
             $usuarioModel = new Usuario();
             $user = $usuarioModel->autenticar($email, $pass);
             if ($user) {
                 $_SESSION['usuario'] = [
-                    'id'     => $user['id'],
+                    'id' => $user['id'],
                     'nombre' => $user['nombre'],
-                    'rol'    => $user['rol']
+                    'rol' => $user['rol']
                 ];
                 // Redirigir al dashboard según el rol
                 if ($user['rol'] === 'admin') {
-                    header('Location: ' . RUTA . 'admin/dashboard');
+                    $this->safeRedirect(RUTA . 'admin/dashboard');
                 } elseif ($user['rol'] === 'psicologo') {
-                    header('Location: ' . RUTA . 'psicologo/dashboard');
+                    $this->safeRedirect(RUTA . 'psicologo/dashboard');
                 } else {
-                    header('Location: ' . RUTA);
+                    $this->safeRedirect(RUTA);
                 }
-                exit;
+                return;
             }
             $this->render('auth/login', ['error' => 'Credenciales inválidas']);
             return;
@@ -44,36 +48,43 @@ class AuthController {
         $this->render('auth/login');
     }
 
-    public function registrar(): void {
+    public function registrar(): void
+    {
         $error = '';
         $old = [];
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-            $nombre    = trim($_POST['nombre'] ?? '');
-            $email     = trim($_POST['email'] ?? '');
-            $password  = $_POST['password'] ?? '';
+            $nombre = trim($_POST['nombre'] ?? '');
+            $email = trim($_POST['email'] ?? '');
+            $password = $_POST['password'] ?? '';
             $password2 = $_POST['password2'] ?? '';
 
             $fechaNacRaw = trim($_POST['fecha_nacimiento'] ?? '');
-            $genero      = trim($_POST['genero'] ?? '');
-            $telefono    = trim($_POST['telefono'] ?? '');
-            $direccion   = trim($_POST['direccion'] ?? '');
-            $historial   = trim($_POST['historial_clinico'] ?? '');
+            $genero = trim($_POST['genero'] ?? '');
+            $telefono = trim($_POST['telefono'] ?? '');
+            $direccion = trim($_POST['direccion'] ?? '');
+            $historial = trim($_POST['historial_clinico'] ?? '');
 
             $old = [
-                'nombre'=>$nombre,'email'=>$email,'fecha_nacimiento'=>$fechaNacRaw,
-                'genero'=>$genero,'telefono'=>$telefono,'direccion'=>$direccion,
-                'historial_clinico'=>$historial
+                'nombre' => $nombre,
+                'email' => $email,
+                'fecha_nacimiento' => $fechaNacRaw,
+                'genero' => $genero,
+                'telefono' => $telefono,
+                'direccion' => $direccion,
+                'historial_clinico' => $historial
             ];
 
             // Reglas rango fechas
             $minDate = '1900-01-01';
             $maxDate = (new DateTime('-5 years'))->format('Y-m-d'); // edad mínima 5
-            $today   = (new DateTime())->format('Y-m-d');
+            $today = (new DateTime())->format('Y-m-d');
 
             // Validaciones básicas
-            if ($nombre==='' || $email==='' || $password==='' || $password2==='' ||
-                $fechaNacRaw==='' || $genero==='' || $telefono==='' || $direccion==='' || $historial==='') {
+            if (
+                $nombre === '' || $email === '' || $password === '' || $password2 === '' ||
+                $fechaNacRaw === '' || $genero === '' || $telefono === '' || $direccion === '' || $historial === ''
+            ) {
                 $error = 'Todos los campos son obligatorios.';
             } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $error = 'Email inválido.';
@@ -81,7 +92,7 @@ class AuthController {
                 $error = 'Las contraseñas no coinciden.';
             } elseif (strlen($password) < 6) {
                 $error = 'La contraseña debe tener al menos 6 caracteres.';
-            } elseif (!in_array($genero, ['masculino','femenino','otro'], true)) {
+            } elseif (!in_array($genero, ['masculino', 'femenino', 'otro'], true)) {
                 $error = 'Género inválido.';
             } elseif (!preg_match('/^[0-9+\-\s]{7,20}$/', $telefono)) {
                 $error = 'Teléfono inválido (7-20 caracteres, dígitos + - espacio).';
@@ -116,33 +127,36 @@ class AuthController {
                     $error = 'El email ya está registrado.';
                 } else {
                     $idUsuario = $usuarioModel->crear([
-                        'nombre'=>$nombre,
-                        'email'=>$email,
-                        'password'=>$password,
-                        'rol'=>'paciente'
+                        'nombre' => $nombre,
+                        'email' => $email,
+                        'password' => $password,
+                        'rol' => 'paciente'
                     ]);
 
+                    // Crear registro de paciente asociado si el método existe; de lo contrario omitir (modelo legado)
                     $pacienteModel = new Paciente();
-                    $pacienteModel->crearPorUsuario($idUsuario, [
-                        'fecha_nacimiento'  => $fechaNacRaw,
-                        'genero'            => $genero,
-                        'correo'            => $email,
-                        'direccion'         => $direccion,
-                        'telefono'          => $telefono,
-                        'historial_clinico' => $historial
-                    ]);
+                    if (method_exists($pacienteModel, 'crearPorUsuario')) {
+                        $pacienteModel->crearPorUsuario($idUsuario, [
+                            'fecha_nacimiento' => $fechaNacRaw,
+                            'genero' => $genero,
+                            'correo' => $email,
+                            'direccion' => $direccion,
+                            'telefono' => $telefono,
+                            'historial_clinico' => $historial
+                        ]);
+                    }
 
-                    header('Location: ' . RUTA . 'auth/login');
-                    exit;
+                    $this->safeRedirect(RUTA . 'auth/login');
+                    return;
                 }
             }
         }
-        $this->render('auth/registrar', ['error'=>$error,'old'=>$old]);
+        $this->render('auth/registrar', ['error' => $error, 'old' => $old]);
     }
 
-    public function logout(): void {
+    public function logout(): void
+    {
         session_destroy();
-        header('Location: ' . RUTA); // Redirige al portal público
-        exit;
+        $this->safeRedirect(RUTA); // Redirige al portal público
     }
 }

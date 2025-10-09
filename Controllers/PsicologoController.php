@@ -8,74 +8,82 @@ require_once __DIR__ . '/../Models/Evaluacion.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
 require_once __DIR__ . '/../helpers/PDFHelper.php';
 require_once __DIR__ . '/../helpers/ExcelHelper.php';
+require_once __DIR__ . '/BaseController.php';
 
-class PsicologoController {
+class PsicologoController extends BaseController
+{
 
     /** Obtiene el id real del psicólogo (tabla Psicologo.id) a partir del usuario logueado.
      *  Cachea sólo si encuentra un id válido (>0). */
-    private function currentPsicologoId(): int {
+    private function currentPsicologoId(): int
+    {
         $this->requirePsicologo();
-        if(isset($_SESSION['psicologo_id']) && (int)$_SESSION['psicologo_id'] > 0){
-            return (int)$_SESSION['psicologo_id'];
+        if (isset($_SESSION['psicologo_id']) && (int) $_SESSION['psicologo_id'] > 0) {
+            return (int) $_SESSION['psicologo_id'];
         }
-        $idUsuario = (int)$_SESSION['usuario']['id'];
+        $idUsuario = (int) $_SESSION['usuario']['id'];
         $modelo = new Psicologo();
         $row = $modelo->obtenerPorUsuario($idUsuario);
-        if($row){
-            $_SESSION['psicologo_id'] = (int)$row['id'];
-            return (int)$row['id'];
+        if ($row) {
+            $_SESSION['psicologo_id'] = (int) $row['id'];
+            return (int) $row['id'];
         }
         // Si no existe registro en Psicologo, devolver 0 (esto causará error en slots/crear) y dejar pista
-        $_SESSION['diag_psicologo_id'] = 'No hay fila en Psicologo para id_usuario='.$idUsuario;
+        $_SESSION['diag_psicologo_id'] = 'No hay fila en Psicologo para id_usuario=' . $idUsuario;
         return 0;
     }
 
-    private function requirePsicologo(): void {
-        if(!isset($_SESSION['usuario']) || $_SESSION['usuario']['rol'] !== 'psicologo'){
-            header('Location: index.php?url=auth/login');
-            exit;
+    protected function requirePsicologo(): void
+    {
+        if (!isset($_SESSION['usuario']) || $_SESSION['usuario']['rol'] !== 'psicologo') {
+            $this->safeRedirect(RUTA . 'auth/login');
         }
     }
 
-    private function render(string $vista, array $data = []): void {
+    protected function render($vista, $data = []): void
+    {
         // Sin header/footer porque el index raíz ya monta layout y navbar
         $file = __DIR__ . '/../Views/' . $vista . '.php';
-        if(!file_exists($file)) { echo '<div class="alert alert-danger">Vista no encontrada: '.htmlspecialchars($vista).'</div>'; return; }
+        if (!file_exists($file)) {
+            echo '<div class="alert alert-danger">Vista no encontrada: ' . htmlspecialchars($vista) . '</div>';
+            return;
+        }
         extract($data);
         require $file;
     }
 
-    public function dashboard(): void {
+    public function dashboard(): void
+    {
         $this->requirePsicologo();
         $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         $pagoM = new Pago();
-        
+
         // Datos básicos
         $hoy = date('Y-m-d');
-        $pendHoy = $this->countEstadoDia($idPsico,'pendiente',$hoy);
-        $realHoy = $this->countEstadoDia($idPsico,'realizada',$hoy);
-        $cancelHoy = $this->countEstadoDia($idPsico,'cancelada',$hoy);
+        $pendHoy = $this->countEstadoDia($idPsico, 'pendiente', $hoy);
+        $realHoy = $this->countEstadoDia($idPsico, 'realizada', $hoy);
+        $cancelHoy = $this->countEstadoDia($idPsico, 'cancelada', $hoy);
         $ingresos = $this->ingresosPsicologo($idPsico);
-        
+
         // Estadísticas del mes
         $inicioMes = date('Y-m-01');
         $finMes = date('Y-m-t');
         $citasMes = $this->countCitasRango($idPsico, $inicioMes, $finMes);
         $ingresosMes = $this->ingresosPsicologoRango($idPsico, $inicioMes, $finMes);
-        
+
         // Próximos slots y citas pendientes
-        $slots = $citaM->proximosSlots($idPsico,5);
+        $slots = $citaM->proximosSlots($idPsico, 5);
         $proximasCitas = $this->proximasCitasPendientes($idPsico, 5);
-        
+
         // Estadísticas por estado (últimos 30 días)
         $hace30 = date('Y-m-d', strtotime('-30 days'));
         $estadisticas = $this->estadisticasUltimos30Dias($idPsico);
-        
+
         // Total de pacientes únicos atendidos
         $totalPacientes = $this->contarPacientesUnicos($idPsico);
-        
-        $this->render('psicologo/dashboard',[
+
+        $this->render('psicologo/dashboard', [
             'pendHoy' => $pendHoy,
             'realHoy' => $realHoy,
             'cancelHoy' => $cancelHoy,
@@ -89,10 +97,11 @@ class PsicologoController {
         ]);
     }
 
-    public function estadisticas(): void {
+    public function estadisticas(): void
+    {
         $this->requirePsicologo();
         $idPsico = $this->currentPsicologoId();
-        
+
         // Datos para gráficos
         $citasPorMes = $this->citasPorMes($idPsico, 12); // Últimos 12 meses
         $citasPorEstado = $this->citasPorEstado($idPsico);
@@ -101,12 +110,12 @@ class PsicologoController {
         $horariosPopulares = $this->horariosPopulares($idPsico);
         $tasaCancelacion = $this->tasaCancelacion($idPsico);
         $promedioIngresoDiario = $this->promedioIngresoDiario($idPsico);
-        
+
         // Estadísticas generales
         $totalCitas = $this->countCitasTotal($idPsico);
         $totalPacientes = $this->contarPacientesUnicos($idPsico);
         $ingresoTotal = $this->ingresosPsicologo($idPsico);
-        
+
         $this->render('psicologo/estadisticas', [
             'citasPorMes' => $citasPorMes,
             'citasPorEstado' => $citasPorEstado,
@@ -121,80 +130,107 @@ class PsicologoController {
         ]);
     }
 
-    private function countEstadoDia(int $idPsico,string $estado,string $fecha): int {
+    private function countEstadoDia(int $idPsico, string $estado, string $fecha): int
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado_cita=? AND DATE(fecha_hora)=?");
-        $st->execute([$idPsico,$estado,$fecha]);
-        return (int)$st->fetchColumn();
+        $st->execute([$idPsico, $estado, $fecha]);
+        return (int) $st->fetchColumn();
     }
 
-    private function ingresosPsicologo(int $idPsico): float {
+    private function ingresosPsicologo(int $idPsico): float
+    {
         $db = (new Pago())->pdo();
         $st = $db->prepare("SELECT COALESCE(SUM(p.monto_total),0) FROM Pago p JOIN Cita c ON c.id=p.id_cita WHERE c.id_psicologo=? AND p.estado_pago='pagado'");
         $st->execute([$idPsico]);
-        return (float)$st->fetchColumn();
+        return (float) $st->fetchColumn();
     }
 
-    public function citas(): void {
+    public function citas(): void
+    {
         $this->requirePsicologo();
         // Respuesta AJAX de slots (fallback si /slots directo falla en hosting)
-        if(isset($_GET['ajax']) && $_GET['ajax']==='slots'){
+        if (isset($_GET['ajax']) && $_GET['ajax'] === 'slots') {
             $this->slots();
             return;
         }
-    $idPsico = $this->currentPsicologoId();
+        $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         $pacM = new Paciente();
         $evalM = new Evaluacion();
-    $list = $citaM->listarPsicologo($idPsico);
-    // Unificar y ordenar por fecha_hora ASC manteniendo estado_cita original
-    $todas = array_merge($list['pendientes'], $list['realizadas'], $list['canceladas'] ?? []);
-    usort($todas, function($a,$b){ return strcmp($a['fecha_hora'],$b['fecha_hora']); });
-    
-    // Agregar conteo de evaluaciones a cada cita
-    foreach($todas as &$cita){
-        $cita['count_evaluaciones'] = $evalM->contarPorCita((int)$cita['id']);
-    }
-    unset($cita); // Limpiar referencia
-    
-    // Repartir de nuevo en pendientes/realizadas/canceladas ya ordenadas
-    $list['pendientes'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='pendiente'));
-    $list['realizadas'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='realizada'));
-    $list['canceladas'] = array_values(array_filter($todas, fn($c)=>$c['estado_cita']==='cancelada'));
-    $pacientes = $pacM->listarTodos();
-    $this->render('psicologo/citas',[ 'data'=>$list,'pacientes'=>$pacientes ]);
+        $list = $citaM->listarPsicologo($idPsico);
+        // Unificar y ordenar por fecha_hora ASC manteniendo estado_cita original
+        $todas = array_merge($list['pendientes'], $list['realizadas'], $list['canceladas'] ?? []);
+        usort($todas, function ($a, $b) {
+            return strcmp($a['fecha_hora'], $b['fecha_hora']);
+        });
+
+        // Agregar conteo de evaluaciones a cada cita
+        foreach ($todas as &$cita) {
+            $cita['count_evaluaciones'] = $evalM->contarPorCita((int) $cita['id']);
+        }
+        unset($cita); // Limpiar referencia
+
+        // Repartir de nuevo en pendientes/realizadas/canceladas ya ordenadas
+        $list['pendientes'] = array_values(array_filter($todas, fn($c) => $c['estado_cita'] === 'pendiente'));
+        $list['realizadas'] = array_values(array_filter($todas, fn($c) => $c['estado_cita'] === 'realizada'));
+        $list['canceladas'] = array_values(array_filter($todas, fn($c) => $c['estado_cita'] === 'cancelada'));
+        $pacientes = $pacM->listarTodos();
+        $this->render('psicologo/citas', ['data' => $list, 'pacientes' => $pacientes]);
     }
 
-    public function crear(): void {
+    public function crear(): void
+    {
         $this->requirePsicologo();
-    if($_SERVER['REQUEST_METHOD'] !== 'POST'){ header('Location: index.php?url=psicologo/citas'); return; }
-    $idPsico = $this->currentPsicologoId();
-    if($idPsico <= 0){ header('Location: index.php?url=psicologo/citas&err=psico'); return; }
-        $idPaciente = (int)($_POST['id_paciente'] ?? 0);
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $this->safeRedirect(RUTA . 'psicologo/citas');
+            return;
+        }
+        $idPsico = $this->currentPsicologoId();
+        if ($idPsico <= 0) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=psico');
+            return;
+        }
+        $idPaciente = (int) ($_POST['id_paciente'] ?? 0);
         $fecha = trim($_POST['fecha_hora'] ?? '');
         $motivo = trim($_POST['motivo_consulta'] ?? '');
-        if(strlen($motivo) > 255) $motivo = substr($motivo,0,255);
-    if(!$idPaciente || !$fecha){ header('Location: index.php?url=psicologo/citas&err=datos'); return; }
+        if (strlen($motivo) > 255)
+            $motivo = substr($motivo, 0, 255);
+        if (!$idPaciente || !$fecha) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=datos');
+            return;
+        }
         // Validar formato fecha: Y-m-d H:i:s o Y-m-d H:i
-        $fh = DateTime::createFromFormat('Y-m-d H:i:s',$fecha) ?: DateTime::createFromFormat('Y-m-d H:i',$fecha);
-    if(!$fh){ header('Location: index.php?url=psicologo/citas&err=formato'); return; }
+        $fh = DateTime::createFromFormat('Y-m-d H:i:s', $fecha) ?: DateTime::createFromFormat('Y-m-d H:i', $fecha);
+        if (!$fh) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=formato');
+            return;
+        }
         // Normalizar a segundos :00
-        $fh->setTime((int)$fh->format('H'), (int)$fh->format('i'), 0);
+        $fh->setTime((int) $fh->format('H'), (int) $fh->format('i'), 0);
         // Validar minutos 00 o 30
-        $min = (int)$fh->format('i');
-    if($min !== 0 && $min !== 30){ header('Location: index.php?url=psicologo/citas&err=minutos'); return; }
+        $min = (int) $fh->format('i');
+        if ($min !== 0 && $min !== 30) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=minutos');
+            return;
+        }
         // No permitir pasado
         $now = new DateTime();
-    if($fh <= $now){ header('Location: index.php?url=psicologo/citas&err=pasado'); return; }
+        if ($fh <= $now) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=pasado');
+            return;
+        }
         // Validar contra horarios configurados en Horario_Psicologo
         require_once __DIR__ . '/../Models/HorarioPsicologo.php';
-        $diaSemanaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
+        $diaSemanaMap = ['Mon' => 'lunes', 'Tue' => 'martes', 'Wed' => 'miércoles', 'Thu' => 'jueves', 'Fri' => 'viernes', 'Sat' => 'sábado', 'Sun' => 'domingo'];
         $diaBD = $diaSemanaMap[$fh->format('D')] ?? 'lunes';
         // Variantes sin acento para compatibilidad con datos existentes (miercoles/sabado)
         $variants = [$diaBD];
-        if($diaBD === 'miércoles') $variants[] = 'miercoles';
-        if($diaBD === 'sábado') $variants[] = 'sabado';
-        $placeholders = implode(',', array_fill(0,count($variants),'?'));
+        if ($diaBD === 'miércoles')
+            $variants[] = 'miercoles';
+        if ($diaBD === 'sábado')
+            $variants[] = 'sabado';
+        $placeholders = implode(',', array_fill(0, count($variants), '?'));
         $dbChk2 = (new Cita())->pdo();
         $sqlHor = "SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana IN ($placeholders)";
         $stH = $dbChk2->prepare($sqlHor);
@@ -202,77 +238,95 @@ class PsicologoController {
         $stH->execute($params);
         $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
         $enRango = false;
-        foreach($bloques as $b){
-            if($fh->format('H:i:s') >= $b['hora_inicio'] && $fh->format('H:i:s') < $b['hora_fin']){ $enRango = true; break; }
+        foreach ($bloques as $b) {
+            if ($fh->format('H:i:s') >= $b['hora_inicio'] && $fh->format('H:i:s') < $b['hora_fin']) {
+                $enRango = true;
+                break;
+            }
         }
-        if(!$enRango){ header('Location: index.php?url=psicologo/citas&err=fuera_horario'); return; }
+        if (!$enRango) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=fuera_horario');
+            return;
+        }
         $fecha = $fh->format('Y-m-d H:i:s');
         // Evitar choque con una existente misma fecha_hora para ese psicólogo
         $dbChk = (new Cita())->pdo();
-        $stChk = $dbChk->prepare('SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND fecha_hora=? AND estado=\'activo\'' );
-        $stChk->execute([$idPsico,$fecha]);
-        if((int)$stChk->fetchColumn() > 0){ header('Location: index.php?url=psicologo/citas&err=ocupado'); return; }
+        $stChk = $dbChk->prepare('SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND fecha_hora=? AND estado=\'activo\'');
+        $stChk->execute([$idPsico, $fecha]);
+        if ((int) $stChk->fetchColumn() > 0) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=ocupado');
+            return;
+        }
         // Verificar paciente existe
         $pacM = new Paciente();
         $pac = $pacM->getById($idPaciente);
-    if(!$pac){ header('Location: index.php?url=psicologo/citas&err=paciente'); return; }
+        if (!$pac) {
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=paciente');
+            return;
+        }
         try {
             $citaM = new Cita();
             // Placeholder único para no violar UNIQUE(qr_code) (evitamos '')
             $placeholder = 'PEND_' . bin2hex(random_bytes(6));
             $id = $citaM->crear([
-                'id_paciente'=>$idPaciente,
-                'id_psicologo'=>$idPsico,
-                'fecha_hora'=>$fecha,
-                'motivo_consulta'=>$motivo,
-                'qr_code'=>$placeholder
+                'id_paciente' => $idPaciente,
+                'id_psicologo' => $idPsico,
+                'fecha_hora' => $fecha,
+                'motivo_consulta' => $motivo,
+                'qr_code' => $placeholder
             ]);
             // Generar QR usando el id y guardar la RUTA final (qrcodes/cita_id_ID.png)
             $final = null;
             try {
                 // Pasamos nombre sin .png porque el helper lo añade si falta
-                $final = QRHelper::generarQR('CITA:'.$id,'cita','cita_id_'.$id);
-            } catch(Throwable $e){ /* si falla dejamos placeholder */ }
+                $final = QRHelper::generarQR('CITA:' . $id, 'cita', 'cita_id_' . $id);
+            } catch (Throwable $e) { /* si falla dejamos placeholder */
+            }
             $pdo = (new Cita())->pdo();
             // Si QR ok guardamos ruta, si no al menos guardamos el id para mantener único
-            $valorQR = $final ?: (string)$id;
-            $pdo->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$valorQR,$id]);
-            header('Location: index.php?url=psicologo/citas&ok=1');
+            $valorQR = $final ?: (string) $id;
+            $pdo->prepare("UPDATE Cita SET qr_code=? WHERE id=?")->execute([$valorQR, $id]);
+            $this->safeRedirect(RUTA . 'psicologo/citas?ok=1');
             return;
-        } catch(Throwable $e){
+        } catch (Throwable $e) {
             // Guardar mensaje detallado temporal (no en producción)
             $_SESSION['crear_cita_error'] = $e->getMessage();
-            header('Location: index.php?url=psicologo/citas&err=ex');
+            $this->safeRedirect(RUTA . 'psicologo/citas?err=ex');
             return;
         }
     }
 
-    public function scan(): void {
+    public function scan(): void
+    {
         $this->requirePsicologo();
         $this->render('psicologo/scan');
     }
 
-    public function scanProcesar(): void {
+    public function scanProcesar(): void
+    {
         $this->requirePsicologo();
         $rawInput = trim($_POST['token'] ?? '');
-    $idPsico = $this->currentPsicologoId();
+        $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         // Nueva política: solo aceptar formato QR oficial CITA:<id>
-        if(stripos($rawInput,'CITA:')!==0){
-            $res=['ok'=>false,'msg'=>'Formato inválido. Escanee un QR válido (CITA:<id>).'];
+        if (stripos($rawInput, 'CITA:') !== 0) {
+            $res = ['ok' => false, 'msg' => 'Formato inválido. Escanee un QR válido (CITA:<id>).'];
         } else {
-            $num = substr($rawInput,5);
-            if(!ctype_digit($num)){
-                $res=['ok'=>false,'msg'=>'ID inválido en el QR'];
+            $num = substr($rawInput, 5);
+            if (!ctype_digit($num)) {
+                $res = ['ok' => false, 'msg' => 'ID inválido en el QR'];
             } else {
-                $id = (int)$num;
+                $id = (int) $num;
                 $cita = $citaM->obtener($id);
-                if(!$cita){ $res=['ok'=>false,'msg'=>'Cita no encontrada']; }
-                elseif((int)$cita['id_psicologo']!==$idPsico){ $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; }
-                else {
-                    if($cita['estado_cita']==='pendiente') $citaM->marcarRealizada($id);
-                    $cita['estado_cita']='realizada';
-                    $res=['ok'=>true,'msg'=>'Cita confirmada','cita'=>$cita];
+                if (!$cita) {
+                    $res = ['ok' => false, 'msg' => 'Cita no encontrada'];
+                } elseif ((int) $cita['id_psicologo'] !== $idPsico) {
+                    $res = ['ok' => false, 'msg' => 'No pertenece a este psicólogo'];
+                } else {
+                    if ($cita['estado_cita'] === 'pendiente')
+                        $citaM->marcarRealizada($id);
+                    $cita['estado_cita'] = 'realizada';
+                    $res = ['ok' => true, 'msg' => 'Cita confirmada', 'cita' => $cita];
                 }
             }
         }
@@ -281,89 +335,91 @@ class PsicologoController {
     }
 
     // Nuevo: solo consulta (no confirma) - ahora retorna info para "atender"
-    public function scanConsultar(): void {
+    public function scanConsultar(): void
+    {
         $this->requirePsicologo();
         $rawInput = trim($_POST['token'] ?? '');
         $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
-        
-        if(stripos($rawInput,'CITA:')!==0){
-            $res=['ok'=>false,'msg'=>'Formato inválido. Use CITA:<id>'];
+
+        if (stripos($rawInput, 'CITA:') !== 0) {
+            $res = ['ok' => false, 'msg' => 'Formato inválido. Use CITA:<id>'];
         } else {
-            $num = substr($rawInput,5);
-            if(!ctype_digit($num)){
-                $res=['ok'=>false,'msg'=>'ID inválido'];
+            $num = substr($rawInput, 5);
+            if (!ctype_digit($num)) {
+                $res = ['ok' => false, 'msg' => 'ID inválido'];
             } else {
-                $id = (int)$num;
+                $id = (int) $num;
                 $cita = $citaM->obtener($id);
-                if(!$cita){ 
-                    $res=['ok'=>false,'msg'=>'Cita no encontrada']; 
-                } elseif((int)$cita['id_psicologo']!==$idPsico){ 
-                    $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; 
-                } else { 
+                if (!$cita) {
+                    $res = ['ok' => false, 'msg' => 'Cita no encontrada'];
+                } elseif ((int) $cita['id_psicologo'] !== $idPsico) {
+                    $res = ['ok' => false, 'msg' => 'No pertenece a este psicólogo'];
+                } else {
                     // Obtener nombre del paciente
                     $pacM = new Paciente();
-                    $pac = $pacM->getById((int)$cita['id_paciente']);
+                    $pac = $pacM->getById((int) $cita['id_paciente']);
                     $cita['nombre_paciente'] = $pac['nombre'] ?? 'Desconocido';
-                    
+
                     // Determinar acción según estado
                     $accion = $cita['estado_cita'] === 'pendiente' ? 'atender' : 'ver';
-                    
-                    $res=['ok'=>true,'cita'=>$cita,'accion'=>$accion,'msg'=>'Cita encontrada'];
+
+                    $res = ['ok' => true, 'cita' => $cita, 'accion' => $accion, 'msg' => 'Cita encontrada'];
                 }
             }
         }
-        header('Content-Type: application/json'); 
+        header('Content-Type: application/json');
         echo json_encode($res);
     }
 
     // Ya no se usa para confirmar desde scanner - solo si fuera necesario en otro contexto
-    public function scanConfirmar(): void {
+    public function scanConfirmar(): void
+    {
         $this->requirePsicologo();
         $idPsico = $this->currentPsicologoId();
-        $id = (int)($_POST['id'] ?? 0);
+        $id = (int) ($_POST['id'] ?? 0);
         $citaM = new Cita();
         $cita = $citaM->obtener($id);
-        if(!$id || !$cita){ 
-            $res=['ok'=>false,'msg'=>'Cita no encontrada']; 
-        } elseif((int)$cita['id_psicologo']!==$idPsico){ 
-            $res=['ok'=>false,'msg'=>'No pertenece a este psicólogo']; 
-        } elseif($cita['estado_cita']==='realizada'){ 
-            $res=['ok'=>true,'msg'=>'Ya estaba realizada','cita'=>$cita]; 
+        if (!$id || !$cita) {
+            $res = ['ok' => false, 'msg' => 'Cita no encontrada'];
+        } elseif ((int) $cita['id_psicologo'] !== $idPsico) {
+            $res = ['ok' => false, 'msg' => 'No pertenece a este psicólogo'];
+        } elseif ($cita['estado_cita'] === 'realizada') {
+            $res = ['ok' => true, 'msg' => 'Ya estaba realizada', 'cita' => $cita];
         } else {
             $citaM->marcarRealizada($id);
-            $cita['estado_cita']='realizada';
-            $res=['ok'=>true,'msg'=>'Cita confirmada','cita'=>$cita];
+            $cita['estado_cita'] = 'realizada';
+            $res = ['ok' => true, 'msg' => 'Cita confirmada', 'cita' => $cita];
         }
-        header('Content-Type: application/json'); 
+        header('Content-Type: application/json');
         echo json_encode($res);
     }
 
     // Mostrar vista de atender cita (con evaluaciones)
-    public function atenderCita(): void {
+    public function atenderCita(): void
+    {
         $this->requirePsicologo();
-        $idCita = (int)($_GET['id'] ?? 0);
+        $idCita = (int) ($_GET['id'] ?? 0);
         $idPsico = $this->currentPsicologoId();
-        
+
         $citaM = new Cita();
         $cita = $citaM->obtener($idCita);
-        
-        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=nf');
-            return;
+
+        if (!$cita || (int) $cita['id_psicologo'] !== $idPsico) {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&err=nf');
         }
-        
+
         // Obtener paciente
         $pacM = new Paciente();
-        $paciente = $pacM->getById((int)$cita['id_paciente']);
-        
+        $paciente = $pacM->getById((int) $cita['id_paciente']);
+
         // Obtener evaluaciones existentes
         $evalM = new Evaluacion();
         $evaluaciones = $evalM->obtenerPorCita($idCita);
-        
+
         // Determinar si se puede editar (solo si no está realizada o cancelada)
         $puedeEditar = !in_array($cita['estado_cita'], ['realizada', 'cancelada']);
-        
+
         $this->render('psicologo/atender_cita', [
             'cita' => $cita,
             'paciente' => $paciente,
@@ -373,38 +429,39 @@ class PsicologoController {
     }
 
     // Guardar evaluación (AJAX)
-    public function guardarEvaluacion(): void {
+    public function guardarEvaluacion(): void
+    {
         $this->requirePsicologo();
         header('Content-Type: application/json');
-        
-        $idCita = (int)($_POST['id_cita'] ?? 0);
-        $estadoEmocional = (int)($_POST['estado_emocional'] ?? 0);
+
+        $idCita = (int) ($_POST['id_cita'] ?? 0);
+        $estadoEmocional = (int) ($_POST['estado_emocional'] ?? 0);
         $comentarios = trim($_POST['comentarios'] ?? '');
-        
+
         $idPsico = $this->currentPsicologoId();
         $citaM = new Cita();
         $cita = $citaM->obtener($idCita);
-        
-        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
-            echo json_encode(['ok'=>false,'msg'=>'Cita no válida']);
+
+        if (!$cita || (int) $cita['id_psicologo'] !== $idPsico) {
+            echo json_encode(['ok' => false, 'msg' => 'Cita no válida']);
             return;
         }
-        
-        if(in_array($cita['estado_cita'], ['realizada', 'cancelada'])){
-            echo json_encode(['ok'=>false,'msg'=>'No se puede agregar evaluaciones a citas finalizadas']);
+
+        if (in_array($cita['estado_cita'], ['realizada', 'cancelada'])) {
+            echo json_encode(['ok' => false, 'msg' => 'No se puede agregar evaluaciones a citas finalizadas']);
             return;
         }
-        
-        if($estadoEmocional < 1 || $estadoEmocional > 10){
-            echo json_encode(['ok'=>false,'msg'=>'Estado emocional debe estar entre 1 y 10']);
+
+        if ($estadoEmocional < 1 || $estadoEmocional > 10) {
+            echo json_encode(['ok' => false, 'msg' => 'Estado emocional debe estar entre 1 y 10']);
             return;
         }
-        
+
         $evalM = new Evaluacion();
         try {
             $idEval = $evalM->crear($idCita, $estadoEmocional, $comentarios);
-            
-            if($idEval){
+
+            if ($idEval) {
                 // Siempre usar array manual para evitar problemas de timing con obtener()
                 $evaluacion = [
                     'id' => $idEval,
@@ -413,218 +470,247 @@ class PsicologoController {
                     'comentarios' => $comentarios,
                     'estado' => 'activo'
                 ];
-                
+
                 // Contar evaluaciones actuales
                 $totalEval = $evalM->contarPorCita($idCita);
-                
+
                 echo json_encode([
-                    'ok'=>true,
-                    'msg'=>'Evaluación guardada correctamente',
-                    'evaluacion'=>$evaluacion,
-                    'total'=>$totalEval
+                    'ok' => true,
+                    'msg' => 'Evaluación guardada correctamente',
+                    'evaluacion' => $evaluacion,
+                    'total' => $totalEval
                 ]);
             } else {
-                echo json_encode(['ok'=>false,'msg'=>'Error al guardar evaluación']);
+                echo json_encode(['ok' => false, 'msg' => 'Error al guardar evaluación']);
             }
-        } catch(Exception $e) {
+        } catch (Exception $e) {
             error_log('Error en guardarEvaluacion: ' . $e->getMessage());
-            echo json_encode(['ok'=>false,'msg'=>'Error: ' . $e->getMessage()]);
+            echo json_encode(['ok' => false, 'msg' => 'Error: ' . $e->getMessage()]);
         }
     }
 
     // Finalizar cita (marcarla como realizada)
-    public function finalizarCita(): void {
+    public function finalizarCita(): void
+    {
         $this->requirePsicologo();
-        $idCita = (int)($_POST['id_cita'] ?? 0);
+        $idCita = (int) ($_POST['id_cita'] ?? 0);
         $idPsico = $this->currentPsicologoId();
-        
+
         $citaM = new Cita();
         $cita = $citaM->obtener($idCita);
-        
-        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=nf');
-            return;
+
+        if (!$cita || (int) $cita['id_psicologo'] !== $idPsico) {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&err=nf');
         }
-        
-        if($cita['estado_cita'] === 'realizada'){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/atenderCita&id='.$idCita.'&msg=ya_realizada');
-            return;
+
+        if ($cita['estado_cita'] === 'realizada') {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/atenderCita&id=' . $idCita . '&msg=ya_realizada');
         }
-        
+
         // Verificar que tenga al menos una evaluación
         $evalM = new Evaluacion();
         $countEval = $evalM->contarPorCita($idCita);
-        
-        if($countEval === 0){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/atenderCita&id='.$idCita.'&err=sin_eval');
-            return;
+
+        if ($countEval === 0) {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/atenderCita&id=' . $idCita . '&err=sin_eval');
         }
-        
+
         // Marcar como realizada
-        if($citaM->marcarRealizada($idCita)){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&ok=finalizada');
+        if ($citaM->marcarRealizada($idCita)) {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&ok=finalizada');
         } else {
-            header('Location: ' . RUTA . 'index.php?url=psicologo/atenderCita&id='.$idCita.'&err=update');
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/atenderCita&id=' . $idCita . '&err=update');
         }
     }
 
     // Cancelar cita
-    public function cancelarCita(): void {
+    public function cancelarCita(): void
+    {
         $this->requirePsicologo();
-        $idCita = (int)($_POST['id_cita'] ?? 0);
+        $idCita = (int) ($_POST['id_cita'] ?? 0);
         $idPsico = $this->currentPsicologoId();
-        
+
         $citaM = new Cita();
         $cita = $citaM->obtener($idCita);
-        
-        if(!$cita || (int)$cita['id_psicologo'] !== $idPsico){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=nf');
-            return;
+
+        if (!$cita || (int) $cita['id_psicologo'] !== $idPsico) {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&err=nf');
         }
-        
-        if($cita['estado_cita'] === 'cancelada'){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&msg=ya_cancelada');
-            return;
+
+        if ($cita['estado_cita'] === 'cancelada') {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&msg=ya_cancelada');
         }
-        
-        if($cita['estado_cita'] === 'realizada'){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=ya_realizada');
-            return;
+
+        if ($cita['estado_cita'] === 'realizada') {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&err=ya_realizada');
         }
-        
+
         // ✅ NUEVA VALIDACIÓN: No permitir cancelar si ya tiene evaluaciones
         $evalM = new Evaluacion();
         $countEval = $evalM->contarPorCita($idCita);
-        
-        if($countEval > 0){
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=con_evaluaciones');
-            return;
+
+        if ($countEval > 0) {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&err=con_evaluaciones');
         }
-        
+
         // Actualizar estado a cancelada Y liberar el slot (estado='inactivo')
         try {
             $db = $citaM->pdo();
             // ✅ Cambiar estado_cita='cancelada' Y estado='inactivo' para liberar horario
             $st = $db->prepare('UPDATE Cita SET estado_cita = \'cancelada\', estado = \'inactivo\' WHERE id = ?');
             $st->execute([$idCita]);
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&ok=cancelada');
-        } catch(Exception $e) {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&ok=cancelada');
+        } catch (Exception $e) {
             error_log('Error cancelando cita: ' . $e->getMessage());
-            header('Location: ' . RUTA . 'index.php?url=psicologo/citas&err=cancel');
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas&err=cancel');
         }
     }
 
     /** Devuelve slots disponibles (intervalo 30 o 60) para una fecha dada */
-    public function slots(): void {
+    public function slots(): void
+    {
         $this->requirePsicologo();
         header('Content-Type: application/json');
         $fecha = $_GET['fecha'] ?? date('Y-m-d');
-        $interval = (int)($_GET['interval'] ?? 30);
-        if(!in_array($interval,[30,60],true)) $interval=30;
-    $idPsico = $this->currentPsicologoId();
-    if($idPsico <= 0){ echo json_encode(['error'=>'psicologo_no_mapeado','diag'=>($_SESSION['diag_psicologo_id']??'')]); return; }
+        $interval = (int) ($_GET['interval'] ?? 30);
+        if (!in_array($interval, [30, 60], true))
+            $interval = 30;
+        $idPsico = $this->currentPsicologoId();
+        if ($idPsico <= 0) {
+            echo json_encode(['error' => 'psicologo_no_mapeado', 'diag' => ($_SESSION['diag_psicologo_id'] ?? '')]);
+            return;
+        }
         // Validar formato fecha
-        if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$fecha)){
-            echo json_encode(['error'=>'formato_fecha']); return; }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            echo json_encode(['error' => 'formato_fecha']);
+            return;
+        }
         $hoy = new DateTime('today');
-        $fReq = DateTime::createFromFormat('Y-m-d',$fecha);
-        if($fReq < $hoy){ echo json_encode(['error'=>'fecha_pasada']); return; }
+        $fReq = DateTime::createFromFormat('Y-m-d', $fecha);
+        if ($fReq < $hoy) {
+            echo json_encode(['error' => 'fecha_pasada']);
+            return;
+        }
         // Obtener horarios configurados para ese día de semana
-    require_once __DIR__ . '/../Models/HorarioPsicologo.php';
-    $diaSemanaMap = ['Mon'=>'lunes','Tue'=>'martes','Wed'=>'miércoles','Thu'=>'jueves','Fri'=>'viernes','Sat'=>'sábado','Sun'=>'domingo'];
-    $diaBD = $diaSemanaMap[$fReq->format('D')] ?? 'lunes';
-    $pdo = (new Cita())->pdo();
-    $stH = $pdo->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana=? ORDER BY hora_inicio");
-    $stH->execute([$idPsico,$diaBD]);
-    $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
-    if(!$bloques){ echo json_encode(['fecha'=>$fecha,'interval'=>$interval,'slots'=>[],'dia'=>$diaBD]); return; }
+        require_once __DIR__ . '/../Models/HorarioPsicologo.php';
+        $diaSemanaMap = ['Mon' => 'lunes', 'Tue' => 'martes', 'Wed' => 'miércoles', 'Thu' => 'jueves', 'Fri' => 'viernes', 'Sat' => 'sábado', 'Sun' => 'domingo'];
+        $diaBD = $diaSemanaMap[$fReq->format('D')] ?? 'lunes';
+        $pdo = (new Cita())->pdo();
+        $stH = $pdo->prepare("SELECT hora_inicio,hora_fin FROM Horario_Psicologo WHERE id_psicologo=? AND dia_semana=? ORDER BY hora_inicio");
+        $stH->execute([$idPsico, $diaBD]);
+        $bloques = $stH->fetchAll(PDO::FETCH_ASSOC);
+        if (!$bloques) {
+            echo json_encode(['fecha' => $fecha, 'interval' => $interval, 'slots' => [], 'dia' => $diaBD]);
+            return;
+        }
         $stC = $pdo->prepare("SELECT fecha_hora FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora)=? AND estado='activo'");
-        $stC->execute([$idPsico,$fecha]);
+        $stC->execute([$idPsico, $fecha]);
         $ocupadasReg = $stC->fetchAll(PDO::FETCH_ASSOC);
         $ocupadas = [];
-        foreach($ocupadasReg as $r){
-            $hm = substr($r['fecha_hora'],11,5);
-            $ocupadas[$hm]=true; // marca exacto
+        foreach ($ocupadasReg as $r) {
+            $hm = substr($r['fecha_hora'], 11, 5);
+            $ocupadas[$hm] = true; // marca exacto
         }
-        $slots=[]; $now = new DateTime(); $isToday = $fecha === $now->format('Y-m-d');
-        foreach($bloques as $b){
-            $ini = new DateTime($fecha.' '.$b['hora_inicio']);
-            $fin = new DateTime($fecha.' '.$b['hora_fin']);
-            while($ini < $fin){
+        $slots = [];
+        $now = new DateTime();
+        $isToday = $fecha === $now->format('Y-m-d');
+        foreach ($bloques as $b) {
+            $ini = new DateTime($fecha . ' ' . $b['hora_inicio']);
+            $fin = new DateTime($fecha . ' ' . $b['hora_fin']);
+            while ($ini < $fin) {
                 $h = $ini->format('H:i');
-                if($ini < $fin && !$this->slotOcupado($h,$interval,$ocupadas) && (!$isToday || $ini > $now)){
+                if ($ini < $fin && !$this->slotOcupado($h, $interval, $ocupadas) && (!$isToday || $ini > $now)) {
                     $slots[] = $h;
                 }
-                $ini->modify('+'.$interval.' minutes');
+                $ini->modify('+' . $interval . ' minutes');
             }
         }
         sort($slots);
-        echo json_encode(['fecha'=>$fecha,'interval'=>$interval,'slots'=>$slots,'dia'=>$diaBD]);
+        echo json_encode(['fecha' => $fecha, 'interval' => $interval, 'slots' => $slots, 'dia' => $diaBD]);
     }
 
-    private function slotOcupado(string $h, int $interval, array $ocupadas): bool {
-        if(isset($ocupadas[$h])) return true; // misma hora exacta ya ocupada
-        if($interval===60){
+    private function slotOcupado(string $h, int $interval, array $ocupadas): bool
+    {
+        if (isset($ocupadas[$h]))
+            return true; // misma hora exacta ya ocupada
+        if ($interval === 60) {
             // si hay intervalo de 60, considerar que cita ocupada a mitad o inicio bloquea toda la hora
             // Revisar también h+30
-            [$H,$M] = explode(':',$h);
-            $h30 = sprintf('%02d:%02d',(int)$H, (int)$M+30>=60?( (int)$H+1)%24 : (int)$M+30);
-            if(isset($ocupadas[$h30])) return true;
+            [$H, $M] = explode(':', $h);
+            $h30 = sprintf('%02d:%02d', (int) $H, (int) $M + 30 >= 60 ? ((int) $H + 1) % 24 : (int) $M + 30);
+            if (isset($ocupadas[$h30]))
+                return true;
         }
         return false;
     }
 
-    public function pagar(): void {
+    public function pagar(): void
+    {
         $this->requirePsicologo();
-        $idCita = (int)($_POST['id_cita'] ?? 0);
-    if(!$idCita){ header('Location: index.php?url=psicologo/citas&err=cita'); return; }
+        $idCita = (int) ($_POST['id_cita'] ?? 0);
+        if (!$idCita) {
+            $this->safeRedirect('index.php?url=psicologo/citas&err=cita');
+        }
         $citaM = new Cita();
         $cita = $citaM->obtener($idCita);
-    if(!$cita){ header('Location: index.php?url=psicologo/citas&err=nf'); return; }
-    $idPsico = $this->currentPsicologoId();
-    if($idPsico <= 0){ header('Location: index.php?url=psicologo/citas&err=psico'); return; }
-    if((int)$cita['id_psicologo'] !== $idPsico){ header('Location: index.php?url=psicologo/citas&err=own'); return; }
-    if($cita['estado_cita'] !== 'realizada'){ header('Location: index.php?url=psicologo/citas&err=estado'); return; }
+        if (!$cita) {
+            $this->safeRedirect('index.php?url=psicologo/citas&err=nf');
+        }
+        $idPsico = $this->currentPsicologoId();
+        if ($idPsico <= 0) {
+            $this->safeRedirect('index.php?url=psicologo/citas&err=psico');
+        }
+        if ((int) $cita['id_psicologo'] !== $idPsico) {
+            $this->safeRedirect('index.php?url=psicologo/citas&err=own');
+        }
+        if ($cita['estado_cita'] !== 'realizada') {
+            $this->safeRedirect('index.php?url=psicologo/citas&err=estado');
+        }
         $pagoM = new Pago();
         $idPago = $pagoM->registrarPagoCita($idCita, 50.0);
         // Ticket (simple)
         $ticketM = new TicketPago();
         $ex = $ticketM->obtenerPorPago($idPago);
-        if(!$ex){
-            $codigo = strtoupper(substr(hash('sha256','pago'.$idPago.microtime()),0,10));
+        if (!$ex) {
+            $codigo = strtoupper(substr(hash('sha256', 'pago' . $idPago . microtime()), 0, 10));
             $numero = $idPago; // simple correlativo
             try {
-                $qrRuta = QRHelper::generarQR('PAGO:'.$idPago,'ticket','ticket_'.$idPago);
-            } catch(Throwable $e){ $qrRuta=''; }
+                $qrRuta = QRHelper::generarQR('PAGO:' . $idPago, 'ticket', 'ticket_' . $idPago);
+            } catch (Throwable $e) {
+                $qrRuta = '';
+            }
             $ticketM->crear([
-                'id_pago'=>$idPago,
-                'codigo'=>$codigo,
-                'numero_ticket'=>$numero,
-                'qr_code'=>$qrRuta
+                'id_pago' => $idPago,
+                'codigo' => $codigo,
+                'numero_ticket' => $numero,
+                'qr_code' => $qrRuta
             ]);
         }
-        header('Location: index.php?url=psicologo/citas&ok=pagado');
+        $this->safeRedirect('index.php?url=psicologo/citas&ok=pagado');
     }
 
     // ============================================
     // MÉTODOS AUXILIARES PARA ESTADÍSTICAS
     // ============================================
 
-    private function countCitasRango(int $idPsico, string $inicio, string $fin): int {
+    private function countCitasRango(int $idPsico, string $inicio, string $fin): int
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora) BETWEEN ? AND ? AND estado='activo'");
         $st->execute([$idPsico, $inicio, $fin]);
-        return (int)$st->fetchColumn();
+        return (int) $st->fetchColumn();
     }
 
-    private function ingresosPsicologoRango(int $idPsico, string $inicio, string $fin): float {
+    private function ingresosPsicologoRango(int $idPsico, string $inicio, string $fin): float
+    {
         $db = (new Pago())->pdo();
         $st = $db->prepare("SELECT COALESCE(SUM(p.monto_total),0) FROM Pago p JOIN Cita c ON c.id=p.id_cita WHERE c.id_psicologo=? AND p.estado_pago='pagado' AND DATE(c.fecha_hora) BETWEEN ? AND ?");
         $st->execute([$idPsico, $inicio, $fin]);
-        return (float)$st->fetchColumn();
+        return (float) $st->fetchColumn();
     }
 
-    private function proximasCitasPendientes(int $idPsico, int $limit): array {
+    private function proximasCitasPendientes(int $idPsico, int $limit): array
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT c.*, p.nombre as paciente_nombre FROM Cita c LEFT JOIN Paciente p ON p.id=c.id_paciente WHERE c.id_psicologo=? AND c.estado_cita='pendiente' AND DATE(c.fecha_hora) >= CURDATE() AND c.estado='activo' ORDER BY c.fecha_hora ASC LIMIT ?");
         $st->bindValue(1, $idPsico, PDO::PARAM_INT);
@@ -633,21 +719,24 @@ class PsicologoController {
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function estadisticasUltimos30Dias(int $idPsico): array {
+    private function estadisticasUltimos30Dias(int $idPsico): array
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT estado_cita, COUNT(*) as total FROM Cita WHERE id_psicologo=? AND fecha_hora >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND estado='activo' GROUP BY estado_cita");
         $st->execute([$idPsico]);
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function contarPacientesUnicos(int $idPsico): int {
+    private function contarPacientesUnicos(int $idPsico): int
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT COUNT(DISTINCT id_paciente) FROM Cita WHERE id_psicologo=?");
         $st->execute([$idPsico]);
-        return (int)$st->fetchColumn();
+        return (int) $st->fetchColumn();
     }
 
-    private function citasPorMes(int $idPsico, int $meses): array {
+    private function citasPorMes(int $idPsico, int $meses): array
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("
             SELECT DATE_FORMAT(fecha_hora, '%Y-%m') as mes, COUNT(*) as total 
@@ -660,14 +749,16 @@ class PsicologoController {
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function citasPorEstado(int $idPsico): array {
+    private function citasPorEstado(int $idPsico): array
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT estado_cita, COUNT(*) as total FROM Cita WHERE id_psicologo=? GROUP BY estado_cita");
         $st->execute([$idPsico]);
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function ingresosPorMes(int $idPsico, int $meses): array {
+    private function ingresosPorMes(int $idPsico, int $meses): array
+    {
         $db = (new Pago())->pdo();
         $st = $db->prepare("
             SELECT DATE_FORMAT(c.fecha_hora, '%Y-%m') as mes, SUM(p.monto_total) as total 
@@ -681,7 +772,8 @@ class PsicologoController {
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function pacientesMasFrecuentes(int $idPsico, int $limit): array {
+    private function pacientesMasFrecuentes(int $idPsico, int $limit): array
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("
             SELECT p.nombre, p.dui, COUNT(*) as total_citas, c.id_paciente
@@ -698,7 +790,8 @@ class PsicologoController {
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function horariosPopulares(int $idPsico): array {
+    private function horariosPopulares(int $idPsico): array
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("
             SELECT HOUR(fecha_hora) as hora, COUNT(*) as total 
@@ -712,22 +805,25 @@ class PsicologoController {
         return $st->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    private function tasaCancelacion(int $idPsico): float {
+    private function tasaCancelacion(int $idPsico): float
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=?");
         $st->execute([$idPsico]);
-        $total = (int)$st->fetchColumn();
-        
-        if($total === 0) return 0.0;
-        
+        $total = (int) $st->fetchColumn();
+
+        if ($total === 0)
+            return 0.0;
+
         $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=? AND estado_cita='cancelada'");
         $st->execute([$idPsico]);
-        $canceladas = (int)$st->fetchColumn();
-        
+        $canceladas = (int) $st->fetchColumn();
+
         return ($canceladas / $total) * 100;
     }
 
-    private function promedioIngresoDiario(int $idPsico): float {
+    private function promedioIngresoDiario(int $idPsico): float
+    {
         $db = (new Pago())->pdo();
         $st = $db->prepare("
             SELECT DATEDIFF(MAX(c.fecha_hora), MIN(c.fecha_hora)) as dias 
@@ -736,27 +832,30 @@ class PsicologoController {
             WHERE c.id_psicologo=? AND p.estado_pago='pagado'
         ");
         $st->execute([$idPsico]);
-        $dias = (int)$st->fetchColumn();
-        
-        if($dias === 0) $dias = 1;
-        
+        $dias = (int) $st->fetchColumn();
+
+        if ($dias === 0)
+            $dias = 1;
+
         $ingresos = $this->ingresosPsicologo($idPsico);
         return $ingresos / $dias;
     }
 
-    private function countCitasTotal(int $idPsico): int {
+    private function countCitasTotal(int $idPsico): int
+    {
         $db = (new Cita())->pdo();
         $st = $db->prepare("SELECT COUNT(*) FROM Cita WHERE id_psicologo=?");
         $st->execute([$idPsico]);
-        return (int)$st->fetchColumn();
+        return (int) $st->fetchColumn();
     }
 
-    public function exportarEstadisticasExcel(): void {
+    public function exportarEstadisticasExcel(): void
+    {
         $this->requirePsicologo();
         $idPsico = $this->currentPsicologoId();
-        
+
         require_once __DIR__ . '/../helpers/ExcelHelper.php';
-        
+
         // Obtener todos los datos
         $citasPorMes = $this->citasPorMes($idPsico, 12);
         $citasPorEstado = $this->citasPorEstado($idPsico);
@@ -768,10 +867,10 @@ class PsicologoController {
         $totalCitas = $this->countCitasTotal($idPsico);
         $totalPacientes = $this->contarPacientesUnicos($idPsico);
         $ingresoTotal = $this->ingresosPsicologo($idPsico);
-        
+
         // Preparar las secciones del reporte
         $sheets = [];
-        
+
         // 1. Resumen General
         $sheets['RESUMEN GENERAL'] = [
             'headers' => ['Métrica', 'Valor'],
@@ -783,41 +882,41 @@ class PsicologoController {
                 ['Tasa de Cancelación', number_format($tasaCancelacion, 2) . '%']
             ]
         ];
-        
+
         // 2. Citas por Mes
         $dataCitasMes = [];
-        foreach($citasPorMes as $row) {
+        foreach ($citasPorMes as $row) {
             $dataCitasMes[] = [$row['mes'], $row['total']];
         }
         $sheets['CITAS POR MES (Últimos 12 meses)'] = [
             'headers' => ['Mes', 'Total de Citas'],
             'data' => $dataCitasMes
         ];
-        
+
         // 3. Citas por Estado
         $dataCitasEstado = [];
-        foreach($citasPorEstado as $row) {
+        foreach ($citasPorEstado as $row) {
             $dataCitasEstado[] = [ucfirst($row['estado_cita']), $row['total']];
         }
         $sheets['CITAS POR ESTADO'] = [
             'headers' => ['Estado', 'Total'],
             'data' => $dataCitasEstado
         ];
-        
+
         // 4. Ingresos por Mes
         $dataIngresos = [];
-        foreach($ingresosPorMes as $row) {
+        foreach ($ingresosPorMes as $row) {
             $dataIngresos[] = [$row['mes'], '$' . number_format($row['total'], 2)];
         }
         $sheets['INGRESOS POR MES'] = [
             'headers' => ['Mes', 'Ingresos'],
             'data' => $dataIngresos
         ];
-        
+
         // 5. Top 10 Pacientes Frecuentes
         $dataPacientes = [];
         $pos = 1;
-        foreach($pacientesFrecuentes as $pac) {
+        foreach ($pacientesFrecuentes as $pac) {
             $nombre = $pac['nombre'] ?: 'Paciente #' . $pac['id_paciente'];
             $dataPacientes[] = [$pos++, $nombre, $pac['total_citas']];
         }
@@ -825,11 +924,11 @@ class PsicologoController {
             'headers' => ['#', 'Nombre del Paciente', 'Total de Citas'],
             'data' => $dataPacientes
         ];
-        
+
         // 6. Horarios Más Populares
         if (!empty($horariosPopulares)) {
             $dataHorarios = [];
-            foreach($horariosPopulares as $h) {
+            foreach ($horariosPopulares as $h) {
                 $dataHorarios[] = [$h['hora'] . ':00', $h['total']];
             }
             $sheets['HORARIOS MÁS SOLICITADOS'] = [
@@ -837,20 +936,21 @@ class PsicologoController {
                 'data' => $dataHorarios
             ];
         }
-        
+
         // Nombre del archivo con fecha
         $filename = 'Estadisticas_Psicologo_' . date('Y-m-d_His');
-        
+
         // Intentar exportar a Excel XLSX, si falla usará CSV automáticamente
         ExcelHelper::exportarMultiplesHojas($sheets, $filename, 'Estadísticas Psicólogo');
     }
 
-    public function exportarEstadisticasPDF(): void {
+    public function exportarEstadisticasPDF(): void
+    {
         $this->requirePsicologo();
         $idPsico = $this->currentPsicologoId();
-        
+
         require_once __DIR__ . '/../helpers/PDFHelper.php';
-        
+
         // Obtener todos los datos
         $citasPorMes = $this->citasPorMes($idPsico, 12);
         $citasPorEstado = $this->citasPorEstado($idPsico);
@@ -862,21 +962,23 @@ class PsicologoController {
         $totalCitas = $this->countCitasTotal($idPsico);
         $totalPacientes = $this->contarPacientesUnicos($idPsico);
         $ingresoTotal = $this->ingresosPsicologo($idPsico);
-        
+
         // Obtener nombre del psicólogo
         $psico = new Psicologo();
         $dataPsico = $psico->get($idPsico);
         $nombrePsico = $dataPsico['nombre'] ?? 'Psicólogo';
-        
+
         // Calcular más estadísticas
         $citasRealizadas = 0;
         $citasCanceladas = 0;
-        foreach($citasPorEstado as $row) {
-            if($row['estado_cita'] === 'realizada') $citasRealizadas = $row['total'];
-            if($row['estado_cita'] === 'cancelada') $citasCanceladas = $row['total'];
+        foreach ($citasPorEstado as $row) {
+            if ($row['estado_cita'] === 'realizada')
+                $citasRealizadas = $row['total'];
+            if ($row['estado_cita'] === 'cancelada')
+                $citasCanceladas = $row['total'];
         }
         $tasaAsistencia = $totalCitas > 0 ? ($citasRealizadas / $totalCitas) * 100 : 0;
-        
+
         // Generar HTML para el PDF (HTML 4.01 compatible con DomPDF)
         $html = '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
@@ -925,37 +1027,37 @@ class PsicologoController {
             <div class="summary-row">
                 <div class="summary-cell">
                     <span class="stat-label">Total de Citas</span>
-                    <span class="stat-value">' . (int)$totalCitas . '</span>
+                    <span class="stat-value">' . (int) $totalCitas . '</span>
                 </div>
                 <div class="summary-cell">
                     <span class="stat-label">Citas Realizadas</span>
-                    <span class="stat-value">' . (int)$citasRealizadas . '</span>
+                    <span class="stat-value">' . (int) $citasRealizadas . '</span>
                 </div>
             </div>
             <div class="summary-row">
                 <div class="summary-cell">
                     <span class="stat-label">Pacientes Unicos</span>
-                    <span class="stat-value">' . (int)$totalPacientes . '</span>
+                    <span class="stat-value">' . (int) $totalPacientes . '</span>
                 </div>
                 <div class="summary-cell">
                     <span class="stat-label">Tasa de Asistencia</span>
-                    <span class="stat-value">' . number_format((float)$tasaAsistencia, 1) . '%</span>
+                    <span class="stat-value">' . number_format((float) $tasaAsistencia, 1) . '%</span>
                 </div>
             </div>
             <div class="summary-row">
                 <div class="summary-cell">
                     <span class="stat-label">Ingresos Totales</span>
-                    <span class="stat-value">$' . number_format((float)$ingresoTotal, 2) . '</span>
+                    <span class="stat-value">$' . number_format((float) $ingresoTotal, 2) . '</span>
                 </div>
                 <div class="summary-cell">
                     <span class="stat-label">Ingreso Promedio/Dia</span>
-                    <span class="stat-value">$' . number_format((float)$promedioIngresoDiario, 2) . '</span>
+                    <span class="stat-value">$' . number_format((float) $promedioIngresoDiario, 2) . '</span>
                 </div>
             </div>
             <div class="summary-row">
                 <div class="summary-cell">
                     <span class="stat-label">Tasa de Cancelacion</span>
-                    <span class="stat-value">' . number_format((float)$tasaCancelacion, 2) . '%</span>
+                    <span class="stat-value">' . number_format((float) $tasaCancelacion, 2) . '%</span>
                 </div>
                 <div class="summary-cell">
                     <span class="stat-label">Ingreso Promedio/Cita</span>
@@ -981,21 +1083,21 @@ class PsicologoController {
             </tr>
         </thead>
         <tbody>';
-                
+
         $maxCitas = !empty($citasPorMes) ? max(array_column($citasPorMes, 'total')) : 1;
-        foreach($citasPorMes as $row) {
+        foreach ($citasPorMes as $row) {
             $mes = htmlspecialchars($row['mes'] ?? '', ENT_QUOTES, 'UTF-8');
             $porcentaje = $totalCitas > 0 ? ($row['total'] / $totalCitas) * 100 : 0;
             $barra = str_repeat('█', round(($row['total'] / $maxCitas) * 10));
             $html .= '<tr>
             <td>' . $mes . '</td>
-            <td class="text-center"><strong>' . (int)$row['total'] . '</strong></td>
+            <td class="text-center"><strong>' . (int) $row['total'] . '</strong></td>
             <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
             <td class="text-right">' . $barra . '</td>
         </tr>';
         }
-    
-    $html .= '</tbody>
+
+        $html .= '</tbody>
     </table>
     
     <h2>Distribucion de Citas por Estado</h2>
@@ -1008,24 +1110,27 @@ class PsicologoController {
             </tr>
         </thead>
         <tbody>';
-                
-        foreach($citasPorEstado as $row) {
+
+        foreach ($citasPorEstado as $row) {
             $porcentaje = $totalCitas > 0 ? ($row['total'] / $totalCitas) * 100 : 0;
             $badgeClass = 'badge';
-            if($row['estado_cita'] === 'realizada') $badgeClass .= ' badge-success';
-            elseif($row['estado_cita'] === 'pendiente') $badgeClass .= ' badge-warning';
-            elseif($row['estado_cita'] === 'cancelada') $badgeClass .= ' badge-danger';
-            
+            if ($row['estado_cita'] === 'realizada')
+                $badgeClass .= ' badge-success';
+            elseif ($row['estado_cita'] === 'pendiente')
+                $badgeClass .= ' badge-warning';
+            elseif ($row['estado_cita'] === 'cancelada')
+                $badgeClass .= ' badge-danger';
+
             $estadoTexto = htmlspecialchars(ucfirst($row['estado_cita'] ?? ''), ENT_QUOTES, 'UTF-8');
-            
+
             $html .= '<tr>
             <td><span class="' . $badgeClass . '">' . $estadoTexto . '</span></td>
-            <td class="text-center">' . (int)$row['total'] . '</td>
-            <td class="text-center">' . number_format((float)$porcentaje, 1) . '%</td>
+            <td class="text-center">' . (int) $row['total'] . '</td>
+            <td class="text-center">' . number_format((float) $porcentaje, 1) . '%</td>
         </tr>';
         }
-    
-    $html .= '</tbody>
+
+        $html .= '</tbody>
     </table>
     
     <div class="page-break"></div>
@@ -1041,22 +1146,22 @@ class PsicologoController {
             </tr>
         </thead>
         <tbody>';
-                
+
         $totalIngresos = array_sum(array_column($ingresosPorMes, 'total'));
         $promedioMensual = count($ingresosPorMes) > 0 ? $totalIngresos / count($ingresosPorMes) : 0;
-        foreach($ingresosPorMes as $row) {
+        foreach ($ingresosPorMes as $row) {
             $mes = htmlspecialchars($row['mes'] ?? '', ENT_QUOTES, 'UTF-8');
             $porcentaje = $totalIngresos > 0 ? ($row['total'] / $totalIngresos) * 100 : 0;
             $vsPromedio = $promedioMensual > 0 ? (($row['total'] - $promedioMensual) / $promedioMensual) * 100 : 0;
             $indicador = $vsPromedio > 0 ? '(+' . number_format($vsPromedio, 0) . '%)' : ($vsPromedio < 0 ? '(' . number_format($vsPromedio, 0) . '%)' : '');
             $html .= '<tr>
             <td>' . $mes . '</td>
-            <td class="text-right"><strong>$' . number_format((float)$row['total'], 2) . '</strong></td>
+            <td class="text-right"><strong>$' . number_format((float) $row['total'], 2) . '</strong></td>
             <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
             <td class="text-center">' . $indicador . '</td>
         </tr>';
         }
-        
+
         $html .= '</tbody>
     </table>
     
@@ -1072,24 +1177,24 @@ class PsicologoController {
             </tr>
         </thead>
         <tbody>';
-                
+
         $pos = 1;
-        foreach($pacientesFrecuentes as $pac) {
-            $nombre = $pac['nombre'] ? htmlspecialchars($pac['nombre'], ENT_QUOTES, 'UTF-8') : 'Paciente #' . (int)$pac['id_paciente'];
+        foreach ($pacientesFrecuentes as $pac) {
+            $nombre = $pac['nombre'] ? htmlspecialchars($pac['nombre'], ENT_QUOTES, 'UTF-8') : 'Paciente #' . (int) $pac['id_paciente'];
             $porcentaje = $totalCitas > 0 ? ($pac['total_citas'] / $totalCitas) * 100 : 0;
             $categoria = $pac['total_citas'] >= 5 ? 'Frecuente' : ($pac['total_citas'] >= 3 ? 'Regular' : 'Ocasional');
             $html .= '<tr>
             <td class="text-center"><strong>' . $pos++ . '</strong></td>
             <td>' . $nombre . '</td>
-            <td class="text-center">' . (int)$pac['total_citas'] . '</td>
+            <td class="text-center">' . (int) $pac['total_citas'] . '</td>
             <td class="text-center">' . number_format($porcentaje, 1) . '%</td>
             <td class="text-center">' . $categoria . '</td>
         </tr>';
         }
-        
+
         $html .= '</tbody>
     </table>';
-            
+
         if (!empty($horariosPopulares)) {
             $html .= '
     <h2>Horarios Mas Solicitados</h2>
@@ -1101,18 +1206,18 @@ class PsicologoController {
             </tr>
         </thead>
         <tbody>';
-                
-            foreach($horariosPopulares as $h) {
+
+            foreach ($horariosPopulares as $h) {
                 $html .= '<tr>
-            <td>' . (int)$h['hora'] . ':00</td>
-            <td class="text-center">' . (int)$h['total'] . '</td>
+            <td>' . (int) $h['hora'] . ':00</td>
+            <td class="text-center">' . (int) $h['total'] . '</td>
         </tr>';
             }
-            
+
             $html .= '</tbody>
     </table>';
         }
-        
+
         $html .= '
     
     <div class="footer">
@@ -1123,7 +1228,7 @@ class PsicologoController {
     </div>
 </body>
 </html>';
-        
+
         // Generar PDF (PDFHelper agrega .pdf automáticamente)
         $filename = 'Reporte_' . preg_replace('/[^A-Za-z0-9_]/', '_', $nombrePsico) . '_' . date('Ymd_His');
         PDFHelper::generarPDF($html, $filename, true);

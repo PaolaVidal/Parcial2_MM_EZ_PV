@@ -1,16 +1,39 @@
 <?php
 $nombre = htmlspecialchars($paciente['nombre'] ?? 'Paciente');
 $dui = htmlspecialchars($paciente['dui'] ?? 'N/A');
+$email = htmlspecialchars($paciente['email'] ?? 'No registrado');
+$telefono = htmlspecialchars($paciente['telefono'] ?? 'No registrado');
+$direccion = htmlspecialchars($paciente['direccion'] ?? 'No registrada');
+$fechaRaw = $paciente['fecha_nacimiento'] ?? $paciente['fechaNacimiento'] ?? '';
+if ($fechaRaw && preg_match('/^\d{4}-\d{2}-\d{2}/', $fechaRaw)) {
+  try {
+    $fechaNac = (new DateTime(substr($fechaRaw, 0, 10)))->format('d/m/Y');
+  } catch (Throwable $e) {
+    $fechaNac = htmlspecialchars($fechaRaw);
+  }
+} else {
+  $fechaNac = 'No registrada';
+}
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
-    <h2 class="h4 mb-1"><i class="fas fa-user-circle text-primary"></i> Bienvenido, <?= $nombre ?></h2>
-    <p class="text-muted mb-0"><i class="fas fa-id-card"></i> DUI: <?= $dui ?></p>
+<div class="card shadow-sm mb-4">
+  <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3">
+    <div>
+      <h2 class="h5 mb-2"><i class="fas fa-user-circle text-primary"></i> Bienvenido, <?= $nombre ?></h2>
+      <div class="small text-muted">
+        <div><i class="fas fa-id-card"></i> <strong>DUI:</strong> <?= $dui ?></div>
+        <div><i class="fas fa-envelope"></i> <strong>Email:</strong> <?= $email ?></div>
+        <div><i class="fas fa-phone"></i> <strong>Teléfono:</strong> <?= $telefono ?></div>
+        <div><i class="fas fa-home"></i> <strong>Dirección:</strong> <?= $direccion ?></div>
+        <div><i class="fas fa-birthday-cake"></i> <strong>Fecha de Nacimiento:</strong> <?= $fechaNac ?></div>
+      </div>
+    </div>
+    <div class="text-md-end">
+      <a href="<?= RUTA ?>public/salir" class="btn btn-outline-danger btn-sm">
+        <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+      </a>
+    </div>
   </div>
-  <a href="<?= RUTA ?>public/salir" class="btn btn-outline-danger btn-sm">
-    <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
-  </a>
 </div>
 
 <div class="row g-3">
@@ -28,7 +51,7 @@ $dui = htmlspecialchars($paciente['dui'] ?? 'N/A');
       </div>
     </div>
   </div>
-  
+
   <!-- Mis Pagos -->
   <div class="col-md-6">
     <div class="card h-100 shadow-sm border-success">
@@ -43,7 +66,7 @@ $dui = htmlspecialchars($paciente['dui'] ?? 'N/A');
       </div>
     </div>
   </div>
-  
+
   <!-- Psicólogos Disponibles -->
   <div class="col-md-6">
     <div class="card h-100 shadow-sm border-info">
@@ -58,7 +81,7 @@ $dui = htmlspecialchars($paciente['dui'] ?? 'N/A');
       </div>
     </div>
   </div>
-  
+
   <!-- Solicitar Cambios -->
   <div class="col-md-6">
     <div class="card h-100 shadow-sm border-warning">

@@ -15,9 +15,9 @@
               <i class="fas fa-sign-in-alt fa-3x text-primary"></i>
             </div>
             <h3 class="h5 mb-3">Acceder a Mi Panel</h3>
-            <p class="text-muted">Ingresa con tu DUI y código de acceso para ver tus citas, pagos y más.</p>
+            <p class="text-muted">Ingresa con tu código de acceso para ver tus citas, pagos y más.</p>
             <a href="<?= RUTA ?>public/acceso" class="btn btn-primary btn-lg w-100">
-              <i class="fas fa-user-lock"></i> Iniciar Sesión
+              <i class="fas fa-user-lock"></i> Acceder
             </a>
           </div>
         </div>

@@ -8,7 +8,7 @@ class Database {
     private $pdo;                   // Objeto PDO
 
     private $host = 'localhost';
-    private $db   = 'psicologia2';
+    private $db   = 'psicologia';
     private $user = 'root';
     private $pass = '';
     private $charset = 'utf8mb4';
