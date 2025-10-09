@@ -9,12 +9,17 @@
         <a href="<?= RUTA ?>psicologo/dashboard" class="btn btn-outline-secondary btn-sm me-2">
             <i class="fas fa-arrow-left me-1"></i> Volver
         </a>
-        <a href="<?= RUTA ?>psicologo/exportarEstadisticasExcel" class="btn btn-success btn-sm me-2" title="Descarga archivo Excel profesional con formato">
-            <i class="fas fa-file-excel me-1"></i> Exportar Excel
-        </a>
-        <a href="<?= RUTA ?>psicologo/exportarEstadisticasPDF" class="btn btn-danger btn-sm" target="_blank" title="Abre PDF en nueva pestaña">
-            <i class="fas fa-file-pdf me-1"></i> Exportar PDF
-        </a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-danger btn-sm" onclick="psExportGraficas()">
+                <i class="fas fa-file-pdf me-1"></i> PDF Gráficas
+            </button>
+            <button type="button" class="btn btn-warning btn-sm" onclick="psExportDatos()">
+                <i class="fas fa-file-pdf me-1"></i> PDF Datos
+            </button>
+            <button type="button" class="btn btn-success btn-sm" onclick="psExportExcel()">
+                <i class="fas fa-file-excel me-1"></i> Exportar Excel
+            </button>
+        </div>
     </div>
 </div>
 
@@ -308,3 +313,14 @@ canvas {
     height: auto !important;
 }
 </style>
+
+<script>
+function _psicologoGetParams(){
+    // Preserve query params if any (no filters currently but keep generic)
+    const params = new URLSearchParams(window.location.search);
+    return params;
+}
+function psExportGraficas(){ const p=_psicologoGetParams(); p.set('export','pdf_graficas'); window.open('<?= RUTA ?>psicologo/estadisticas?'+p.toString(), '_blank'); }
+function psExportDatos(){ const p=_psicologoGetParams(); p.set('export','pdf_datos'); window.open('<?= RUTA ?>psicologo/estadisticas?'+p.toString(), '_blank'); }
+function psExportExcel(){ const p=_psicologoGetParams(); p.set('export','excel'); window.location.href='<?= RUTA ?>psicologo/estadisticas?'+p.toString(); }
+</script>
