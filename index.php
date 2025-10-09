@@ -185,8 +185,8 @@ if (isset($_GET['url'])) {
     $rawEndpoints = [
         // Endpoints que deben devolver JSON o respuesta sin envolver en layout
         'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar', 'guardarEvaluacion'],
-    'ticket' => ['qr', 'pdf', 'consultarPago'],
-    'cita' => ['pdf'],
+        'ticket' => ['qr', 'pdf', 'consultarPago'],
+        'cita' => ['pdf'],
         // Procesos administrativos que solo hacen POST + redirect (evita pantalla en blanco)
         'admin' => ['procesarSolicitud'],
         // Especialidades (CRUD vía POST -> redirect)
