@@ -330,7 +330,8 @@
         console.log('Respuesta texto (primeros 200 chars):', txt.substring(0, 200));
 
         // Verificar que la respuesta sea JSON
-        if (!txt.trim().startsWith('{') && !txt.trim().startsWith('[')) {
+        const s = txt.trim();
+        if (!s.startsWith('{') && !s.startsWith('[')) {
           console.error('Respuesta NO es JSON, contenido completo:', txt);
           throw new Error('Respuesta inválida del servidor (no JSON)');
         }
@@ -338,18 +339,23 @@
         const j = JSON.parse(txt);
         console.log('JSON parseado:', j);
 
-        if (j.error) {
-          cont.innerHTML = '<span class="text-danger small">Error: ' + j.message + '</span>';
+        // Soportar varias claves de mensaje de error/respuesta del servidor
+        const serverError = j.error || j.err || j.exception || j.msg || null;
+        const serverMessage = j.message || j.msg || j.ms || null;
+
+        if (serverError) {
+          cont.innerHTML = '<span class="text-danger small">Error: ' + String(serverError) + '</span>';
           return;
         }
 
-        if (j.message) {
-          cont.innerHTML = '<span class="text-warning small">' + j.message + '</span>';
+        if (serverMessage) {
+          cont.innerHTML = '<span class="text-warning small">' + String(serverMessage) + '</span>';
           return;
         }
 
         if (!j.slots || !j.slots.length) {
-          cont.innerHTML = '<span class="text-warning small">Sin horas libres para ' + j.dia + '</span>';
+          const dia = j.dia || '';
+          cont.innerHTML = '<span class="text-warning small">Sin horas libres' + (dia ? ' para ' + dia : '') + '</span>';
           return;
         }
         cont.innerHTML = j.slots.map(h => `<button type='button' class='btn btn-sm btn-outline-primary m-1' onclick='selSlotReasignar("${h}")'>${h}</button>`).join('');

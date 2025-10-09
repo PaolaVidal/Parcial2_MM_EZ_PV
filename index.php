@@ -1,23 +1,20 @@
 <?php
-/**
- * Front controller estilo proyecto anterior (param ?url=controlador/accion/id)
- * - Define constante RUTA siempre con slash final
- * - Redirección a login si no autenticado (excepto rutas públicas)
- * - Soporta early dispatch (placeholder) si luego agregas exportaciones
- * - Incluye navbar del ejemplo anterior
- */
+function usuarioRol(): string
+{
+    return $_SESSION['usuario']['rol'] ?? '';
+}
 
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-// Zona horaria global (El Salvador)
-if (function_exists('date_default_timezone_set')) {
-    $timezone = 'America/El_Salvador';
-    if (in_array($timezone, timezone_identifiers_list(), true)) {
-        date_default_timezone_set($timezone);
-    } else {
-        error_log('Zona horaria inválida: ' . $timezone);
+function requiereRol(array $roles): void
+{
+    if (!isset($_SESSION['usuario']) || !in_array(usuarioRol(), $roles, true)) {
+        http_response_code(403);
+        echo '<div class="alert alert-danger">Acceso denegado</div>';
+        exit;
     }
 }
+
 $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 $basePath = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/') . '/';
 define('RUTA', $scheme . '://' . $host . $basePath);
 // Activar URLs "bonitas" solo si el servidor tiene reglas de rewrite configuradas
@@ -119,115 +116,68 @@ if (!isset($_SESSION['usuario'])) {
     }
 }
 
-// ----- Early dispatch (descargas / acciones que no requieren layout) OPCIONAL -----
+// ----- Early dispatch (safe) --------------------------------------------------
+// For some endpoints (exports, AJAX) we must execute the controller action before
+// printing the main layout so the response is pure (JSON / PDF) and not mixed with HTML.
 if (isset($_GET['url'])) {
     $parts = explode('/', $_GET['url']);
     $paginaEarly = $parts[0] ?? '';
     $accionEarly = $parts[1] ?? 'index';
 
-    // Exportación de estadísticas admin (PDF/Excel) antes de imprimir el layout
-    if ($paginaEarly === 'admin' && $accionEarly === 'estadisticas' && isset($_GET['export'])) {
-        $fileAdmin = $contenido->obtenerContenido('admin');
-        if ($fileAdmin) {
-            require_once $fileAdmin;
-            if (class_exists('AdminController')) {
-                $ctrl = new AdminController();
-                // Replicar filtros básicos usados en el método estadisticas
-                $anio = (int) ($_GET['anio'] ?? date('Y'));
-                $mes = $_GET['mes'] ?? '';
-                $psicologoFiltro = (int) ($_GET['psicologo'] ?? 0);
-                // Usamos el propio método estadisticas que internamente llama a exportarEstadisticas y hace return
-                // para mantener la lógica de requireAdmin y datos.
-                // Limpiamos buffers para evitar basura antes del PDF/Excel
-                while (ob_get_level()) {
-                    @ob_end_clean();
-                }
-                // Ajuste: inyectar export param tal cual espera el método
-                $ctrl->estadisticas(); // dentro detectará $_GET['export'] y generará el archivo
-                exit; // detener front controller
-            }
-        }
-    }
-
-    // Exportación de estadísticas psicólogo (PDF/Excel) antes del layout
-    if ($paginaEarly === 'psicologo' && $accionEarly === 'estadisticas' && isset($_GET['export'])) {
-        $filePs = $contenido->obtenerContenido('psicologo');
-        if ($filePs) {
-            // Capture output during require to detect stray echoes/BOMs
-            ob_start();
-            require_once $filePs;
-            $requireOutput = ob_get_clean();
-            if ($requireOutput !== '') {
-                error_log('Require output when including psicologo controller (early-dispatch): ' . substr($requireOutput, 0, 1000));
-            }
-            if (class_exists('PsicologoController')) {
-                // Limpiar buffers para evitar garbage antes del PDF/Excel
-                while (ob_get_level()) {
-                    @ob_end_clean();
-                }
-                $ctrl = new PsicologoController();
-                $ctrl->estadisticas(); // internamente detecta export y genera salida
-                exit;
-            }
-        }
-    }
-
-    // Exportaciones del panel del paciente (historial / gráfica) antes del layout
-    if ($paginaEarly === 'public' && $accionEarly === 'panel' && isset($_GET['export'])) {
-        $filePublic = $contenido->obtenerContenido('public');
-        if ($filePublic) {
-            require_once $filePublic;
-            if (class_exists('PublicController')) {
-                // Limpiar buffers previos para evitar "headers already sent"
-                while (ob_get_level()) {
-                    @ob_end_clean();
-                }
-                $ctrl = new PublicController();
-                $ctrl->panel(); // internamente detecta export y genera salida (exit implícito en helpers)
-                exit;
-            }
-        }
-    }
-
+    // Small whitelist of controller actions that should be callable without layout
     $rawEndpoints = [
-        // Endpoints que deben devolver JSON o respuesta sin envolver en layout
-        'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar', 'guardarEvaluacion'],
+        // psicologo: slots (AJAX) and estadisticas (export PDF/Excel)
+        'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar', 'guardarEvaluacion', 'estadisticas'],
+        // ticket endpoints that return files
         'ticket' => ['qr', 'pdf', 'consultarPago'],
+        // cita: pdf generation
         'cita' => ['pdf'],
-        // Procesos administrativos que solo hacen POST + redirect (evita pantalla en blanco)
-        'admin' => ['procesarSolicitud'],
-        // Especialidades (CRUD vía POST -> redirect)
-        'especialidad' => ['crear', 'actualizar', 'eliminar', 'cambiarEstado'],
-        // Acciones públicas que solo limpian sesión y redirigen
-        'public' => ['salir'],
-        // ejemplo: 'estadisticas' => ['exportar_pdf','exportar_excel']
+        // admin: include estadisticas export and administrative AJAX actions
+        'admin' => ['procesarSolicitud', 'citas', 'estadisticas'],
+        // public: panel can export historial/graficas
+        'public' => ['panel', 'salir'],
     ];
 
     if (isset($rawEndpoints[$paginaEarly]) && in_array($accionEarly, $rawEndpoints[$paginaEarly], true)) {
-        $file = $contenido->obtenerContenido($paginaEarly);
-        if ($file) {
-            // Capture output during require to detect stray echoes/BOMs
-            ob_start();
-            require_once $file;
-            $requireOutput = ob_get_clean();
-            if ($requireOutput !== '') {
-                error_log('Require output when including ' . $file . ' (raw-endpoint): ' . substr($requireOutput, 0, 1000));
-            }
-            // Ensure no output buffers remain that could make headers_sent() true
-            while (ob_get_level() > 0) {
-                @ob_end_clean();
-            }
-            $class1 = ucfirst($paginaEarly) . 'Controller';
-            $class2 = strtolower($paginaEarly) . 'controller';
-            $clase = class_exists($class1) ? $class1 : (class_exists($class2) ? $class2 : null);
-            if ($clase && method_exists($clase, $accionEarly)) {
-                $ctrl = new $clase();
-                if (isset($parts[2])) {
-                    $ctrl->{$accionEarly}($parts[2]);
-                } else {
-                    $ctrl->{$accionEarly}();
+        // Determine whether this request is an export or ajax call
+        $isExport = isset($_GET['export']);
+        $isAjax = isset($_GET['ajax']);
+
+        // Don't dispatch estadisticas or public panel as raw unless export is present
+        if (($accionEarly === 'estadisticas' || ($paginaEarly === 'public' && $accionEarly === 'panel')) && !$isExport) {
+            // allow normal layout flow for non-export requests (rendered inside index.php layout)
+        // Exception: admin/citas should only be dispatched as raw when called by AJAX (e.g. ajax=slots/list)
+        } elseif ($paginaEarly === 'admin' && $accionEarly === 'citas' && !$isAjax) {
+            // Let the normal layout flow continue for full page requests
+        } else {
+            $file = $contenido->obtenerContenido($paginaEarly);
+            if ($file) {
+                // Capture any accidental output when requiring the controller
+                ob_start();
+                require_once $file;
+                $requireOutput = ob_get_clean();
+                if ($requireOutput !== '') {
+                    error_log('Early-dispatch require output for ' . $file . ': ' . substr($requireOutput, 0, 1000));
                 }
-                exit;
+
+                // Ensure all output buffers are cleared before the controller emits its response
+                while (ob_get_level() > 0) {
+                    @ob_end_clean();
+                }
+
+                $class1 = ucfirst($paginaEarly) . 'Controller';
+                $class2 = strtolower($paginaEarly) . 'controller';
+                $clase = class_exists($class1) ? $class1 : (class_exists($class2) ? $class2 : null);
+                if ($clase && method_exists($clase, $accionEarly)) {
+                    $ctrl = new $clase();
+                    if (isset($parts[2])) {
+                        $ctrl->{$accionEarly}($parts[2]);
+                    } else {
+                        $ctrl->{$accionEarly}();
+                    }
+                    // Controller already emitted the response (JSON/PDF) — stop the front controller
+                    exit;
+                }
             }
         }
     }
@@ -515,16 +465,3 @@ if (empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))) {
 </body>
 
 </html>
-<?php
-function usuarioRol(): string
-{
-    return $_SESSION['usuario']['rol'] ?? '';
-}
-function requiereRol(array $roles): void
-{
-    if (!isset($_SESSION['usuario']) || !in_array(usuarioRol(), $roles, true)) {
-        http_response_code(403);
-        echo '<div class="alert alert-danger">Acceso denegado</div>';
-        exit;
-    }
-}
