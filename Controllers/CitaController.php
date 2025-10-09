@@ -6,16 +6,20 @@ require_once __DIR__ . '/../models/TicketPago.php';
 require_once __DIR__ . '/../models/Paciente.php';
 require_once __DIR__ . '/../models/Psicologo.php';
 require_once __DIR__ . '/../helpers/QRHelper.php';
+require_once __DIR__ . '/BaseController.php';
 
-class CitaController {
+class CitaController extends BaseController
+{
 
     private string $viewsPath;
 
-    public function __construct() {
+    public function __construct()
+    {
         $this->viewsPath = __DIR__ . '/../Views/'; // Usa la carpeta con mayúscula
     }
 
-    private function render(string $vista, array $data = []): void {
+    protected function render($vista, $data = []): void
+    {
         $file = $this->viewsPath . $vista . '.php';
         if (!file_exists($file)) {
             echo '<div class="alert alert-danger">Vista no encontrada: ' . htmlspecialchars($vista) . '</div>';
@@ -25,8 +29,9 @@ class CitaController {
         require $file;
     }
 
-    private function requireRoles(array $roles){
-        if(!isset($_SESSION['usuario']) || !in_array($_SESSION['usuario']['rol'],$roles,true)){
+    private function requireRoles(array $roles)
+    {
+        if (!isset($_SESSION['usuario']) || !in_array($_SESSION['usuario']['rol'], $roles, true)) {
             http_response_code(403);
             echo '<div class="alert alert-danger">Acceso denegado</div>';
             exit;
@@ -34,50 +39,66 @@ class CitaController {
     }
 
     // Punto de entrada genérico desde el menú "Citas"
-    public function index(): void {
-        if(!isset($_SESSION['usuario'])){
-            header('Location: index.php?controller=Auth&action=login');
+    public function index(): void
+    {
+        if (!isset($_SESSION['usuario'])) {
+            $this->safeRedirect(RUTA . 'auth/login');
             return;
         }
         $rol = $_SESSION['usuario']['rol'] ?? '';
-        if($rol==='paciente'){
-            header('Location: index.php?controller=Cita&action=mis');
-        } elseif($rol==='psicologo') {
-            header('Location: index.php?controller=Psicologo&action=citas');
-        } elseif($rol==='admin') {
+        if ($rol === 'paciente') {
+            $this->safeRedirect(RUTA . 'cita/mis');
+        } elseif ($rol === 'psicologo') {
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas');
+        } elseif ($rol === 'admin') {
             // Admin puede reutilizar la pantalla del psicólogo o una admin específica más adelante
-            header('Location: index.php?controller=Psicologo&action=citas');
+            $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas');
         } else {
             echo '<div class="alert alert-warning">Rol sin vista de citas asignada.</div>';
         }
     }
 
     // Paciente: listado + crear en misma vista
-    public function mis(): void {
+    public function mis(): void
+    {
         $this->requireRoles(['paciente']);
-        $idUsuario = (int)$_SESSION['usuario']['id'];
+        // Determinar ID de paciente desde la sesión unificada de acceso por código
+        $idPaciente = 0;
+        if (isset($_SESSION['paciente_id'])) {
+            $idPaciente = (int) $_SESSION['paciente_id'];
+        } elseif (isset($_SESSION['usuario']['id_paciente'])) {
+            $idPaciente = (int) $_SESSION['usuario']['id_paciente'];
+        } else {
+            // En instalaciones antiguas quizá guardaron directamente el id en usuario
+            $idPaciente = (int) ($_SESSION['usuario']['id'] ?? 0);
+        }
 
-        $paciente = (new Paciente())->obtenerPorUsuario($idUsuario);
-        if(!$paciente){
-            echo '<div class="alert alert-danger">Paciente no encontrado.</div>';
+        if ($idPaciente <= 0) {
+            echo '<div class="alert alert-danger">Sesión de paciente inválida. Vuelve a iniciar sesión.</div>';
             return;
         }
-        $idPaciente = (int)$paciente['id'];
+
+        // Verificar existencia real del paciente
+        $paciente = (new Paciente())->getById($idPaciente);
+        if (!$paciente) {
+            echo '<div class="alert alert-danger">Paciente no encontrado. Vuelve a iniciar sesión.</div>';
+            return;
+        }
 
         $mensaje = '';
         $tipoMsj = 'success';
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $fecha   = trim($_POST['fecha_hora'] ?? '');
-            $motivo  = trim($_POST['motivo'] ?? '');
-            $idPsico = (int)($_POST['id_psicologo'] ?? 0);
+            $fecha = trim($_POST['fecha_hora'] ?? '');
+            $motivo = trim($_POST['motivo'] ?? '');
+            $idPsico = (int) ($_POST['id_psicologo'] ?? 0);
 
             if ($fecha === '' || $motivo === '' || $idPsico <= 0) {
                 $mensaje = 'Completa todos los campos.';
                 $tipoMsj = 'danger';
             } else {
                 $fechaNorm = str_replace('T', ' ', $fecha);
-                $dt = DateTime::createFromFormat('Y-m-d H:i', substr($fechaNorm,0,16));
+                $dt = DateTime::createFromFormat('Y-m-d H:i', substr($fechaNorm, 0, 16));
                 if (!$dt) {
                     $mensaje = 'Fecha/hora inválida.';
                     $tipoMsj = 'danger';
@@ -88,25 +109,28 @@ class CitaController {
                     // Validar psicólogo activo
                     $psActivos = (new Psicologo())->listarActivos();
                     $valido = false;
-                    foreach($psActivos as $ps){
-                        if ((int)$ps['id'] === $idPsico){ $valido = true; break; }
+                    foreach ($psActivos as $ps) {
+                        if ((int) $ps['id'] === $idPsico) {
+                            $valido = true;
+                            break;
+                        }
                     }
-                    if(!$valido){
+                    if (!$valido) {
                         $mensaje = 'Psicólogo inválido.';
                         $tipoMsj = 'danger';
                     } else {
                         $token = bin2hex(random_bytes(8));
                         $citaModel = new Cita();
                         $idCita = $citaModel->crear([
-                            'id_paciente'     => $idPaciente,
-                            'id_psicologo'    => $idPsico,
-                            'fecha_hora'      => $dt->format('Y-m-d H:i:00'),
+                            'id_paciente' => $idPaciente,
+                            'id_psicologo' => $idPsico,
+                            'fecha_hora' => $dt->format('Y-m-d H:i:00'),
                             'motivo_consulta' => $motivo,
-                            'qr_code'         => $token
+                            'qr_code' => $token
                         ]);
                         (new Pago())->crearParaCita($idCita);
-                        header('Location: ' . RUTA . 'cita/mis');
-                        exit;
+                        $this->safeRedirect(RUTA . 'cita/mis');
+                        return;
                     }
                 }
             }
@@ -116,44 +140,48 @@ class CitaController {
         $psicologos = (new Psicologo())->listarActivos();
 
         $this->render('paciente/citas', [
-            'citas'      => $citas,
+            'citas' => $citas,
             'psicologos' => $psicologos,
-            'mensaje'    => $mensaje,
-            'tipoMsj'    => $tipoMsj
+            'mensaje' => $mensaje,
+            'tipoMsj' => $tipoMsj
         ]);
     }
 
     // Psicólogo: citas pendientes
-    public function pendientes(): void {
+    public function pendientes(): void
+    {
         $this->requireRoles(['psicologo']);
         // Redirigimos a la nueva pantalla unificada de citas del psicólogo
-        header('Location: index.php?controller=Psicologo&action=citas');
-        exit;
+        $this->safeRedirect(RUTA . 'index.php?url=psicologo/citas');
+        return;
     }
 
     // Redirige (form ya está en mis)
-    public function crear(): void {
+    public function crear(): void
+    {
         $this->requireRoles(['paciente']);
-        header('Location: ' . RUTA . 'cita/mis');
-        exit;
+        $this->safeRedirect(RUTA . 'cita/mis');
+        return;
     }
 
-    public function check($token): void {
-        $this->requireRoles(['psicologo','admin']);
+    public function check($token): void
+    {
+        $this->requireRoles(['psicologo', 'admin']);
         $cita = (new Cita())->obtenerPorQr($token);
-        if(!$cita){
+        if (!$cita) {
             echo '<div class="alert alert-warning">Cita no encontrada</div>';
             return;
         }
-        $this->render('psicologo/cita_scan', ['cita'=>$cita]);
+        $this->render('psicologo/cita_scan', ['cita' => $cita]);
     }
 
-    public function marcarPagada($id): void {
-        $this->requireRoles(['psicologo','admin']);
-        $id = (int)$id;
+    public function marcarPagada($id): void
+    {
+        $this->requireRoles(['psicologo', 'admin']);
+        $id = (int) $id;
         $citaModel = new Cita();
         $cita = $citaModel->obtener($id);
-        if(!$cita){
+        if (!$cita) {
             echo '<div class="alert alert-danger">Cita no existe</div>';
             return;
         }
@@ -164,19 +192,51 @@ class CitaController {
         $pagoModel->marcarPagado($pagoId);
 
         $ticketModel = new TicketPago();
-        if(!$ticketModel->obtenerPorPago($pagoId)){
-            $codigo = 'TCK-'.strtoupper(bin2hex(random_bytes(4)));
-            $numero = date('YmdHis').'-'.$pagoId;
-            $url = RUTA.'ticket/verPago/'.$pagoId;
-            $qr = QRHelper::generarQR($url,'ticket_'.$pagoId);
+        if (!$ticketModel->obtenerPorPago($pagoId)) {
+            $codigo = 'TCK-' . strtoupper(bin2hex(random_bytes(4)));
+            $numero = date('YmdHis') . '-' . $pagoId;
+            $url = RUTA . 'ticket/verPago/' . $pagoId;
+            $qr = QRHelper::generarQR($url, 'ticket_' . $pagoId);
             $ticketModel->crear([
-                'id_pago'=>$pagoId,
-                'codigo'=>$codigo,
-                'numero_ticket'=>$numero,
-                'qr_code'=>$qr
+                'id_pago' => $pagoId,
+                'codigo' => $codigo,
+                'numero_ticket' => $numero,
+                'qr_code' => $qr
             ]);
         }
-        header('Location: ' . RUTA . 'cita/pendientes');
-        exit;
+        $this->safeRedirect(RUTA . 'cita/pendientes');
+        return;
+    }
+
+    // /cita/pdf/{id} - Genera un PDF de la cita (comprobante)
+    public function pdf($id = 0): void
+    {
+        $id = (int) $id;
+        error_log('CitaController::pdf invoked with id=' . $id);
+        if ($id <= 0) {
+            http_response_code(400);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'ID inválido';
+            return;
+        }
+        $citaModel = new Cita();
+        $cita = $citaModel->obtener($id);
+        if (!$cita) {
+            http_response_code(404);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Cita no encontrada';
+            return;
+        }
+        $paciente = (new Paciente())->getById((int) $cita['id_paciente']);
+        $psico = (new Psicologo())->get((int) $cita['id_psicologo']);
+        require_once __DIR__ . '/../helpers/PDFHelper.php';
+        try {
+            PDFHelper::generarCitaPDF($cita, $paciente, $psico);
+        } catch (Exception $e) {
+            error_log('CitaController::pdf error: ' . $e->getMessage());
+            http_response_code(500);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Error generando PDF';
+        }
     }
 }

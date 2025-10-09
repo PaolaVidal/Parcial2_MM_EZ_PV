@@ -2,37 +2,44 @@
 /** Modelo Pago */
 require_once __DIR__ . '/BaseModel.php';
 
-class Pago extends BaseModel {
+class Pago extends BaseModel
+{
 
-    public function crearParaCita(int $idCita, float $montoBase = 50.00): int {
+    public function crearParaCita(int $idCita, float $montoBase = 50.00): int
+    {
         // Evitar duplicados
         $ex = $this->obtenerPorCita($idCita);
-        if ($ex) return (int)$ex['id'];
+        if ($ex)
+            return (int) $ex['id'];
         $st = $this->db->prepare("INSERT INTO Pago (id_cita,monto_base,monto_total,estado_pago,estado) VALUES (?,?,?, 'pendiente','activo')");
-        $st->execute([$idCita,$montoBase,$montoBase]);
-        return (int)$this->db->lastInsertId();
+        $st->execute([$idCita, $montoBase, $montoBase]);
+        return (int) $this->db->lastInsertId();
     }
 
-    public function obtener(int $id): ?array {
+    public function obtener(int $id): ?array
+    {
         $st = $this->db->prepare("SELECT * FROM Pago WHERE id=?");
         $st->execute([$id]);
         $r = $st->fetch();
         return $r ?: null;
     }
 
-    public function obtenerPorCita(int $idCita): ?array {
+    public function obtenerPorCita(int $idCita): ?array
+    {
         $st = $this->db->prepare("SELECT * FROM Pago WHERE id_cita=? LIMIT 1");
         $st->execute([$idCita]);
         $r = $st->fetch();
         return $r ?: null;
     }
 
-    public function marcarPagado(int $id): bool {
+    public function marcarPagado(int $id): bool
+    {
         $st = $this->db->prepare("UPDATE Pago SET estado_pago='pagado' WHERE id=?");
         return $st->execute([$id]);
     }
 
-    public function listarPaciente(int $idPaciente): array {
+    public function listarPaciente(int $idPaciente): array
+    {
         $sql = "SELECT p.*, 
                        c.fecha_hora as cita_fecha,
                        c.motivo_consulta as cita_motivo,
@@ -49,7 +56,8 @@ class Pago extends BaseModel {
         return $st->fetchAll();
     }
 
-    public function listarPsicologo(int $idPsico): array {
+    public function listarPsicologo(int $idPsico): array
+    {
         $sql = "SELECT p.* FROM Pago p
                 JOIN Cita c ON c.id = p.id_cita
                 WHERE c.id_psicologo=? AND p.estado='activo'
@@ -59,28 +67,32 @@ class Pago extends BaseModel {
         return $st->fetchAll();
     }
 
-    public function listarTodos(): array {
+    public function listarTodos(): array
+    {
         return $this->db->query("SELECT * FROM Pago ORDER BY fecha DESC")->fetchAll();
     }
 
-    public function listarPendientes(): array {
+    public function listarPendientes(): array
+    {
         return $this->db->query("SELECT * FROM Pago WHERE estado_pago='pendiente' ORDER BY fecha DESC")->fetchAll();
     }
 
-    public function recalcularTotal(int $idPago): bool {
+    public function recalcularTotal(int $idPago): bool
+    {
         // suma extras
         $st = $this->db->prepare("SELECT monto_base FROM Pago WHERE id=?");
         $st->execute([$idPago]);
-        $base = (float)$st->fetchColumn();
+        $base = (float) $st->fetchColumn();
         $st2 = $this->db->prepare("SELECT COALESCE(SUM(monto),0) FROM PagoExtras WHERE id_pago=?");
         $st2->execute([$idPago]);
-        $extras = (float)$st2->fetchColumn();
+        $extras = (float) $st2->fetchColumn();
         $total = $base + $extras;
         $up = $this->db->prepare("UPDATE Pago SET monto_total=? WHERE id=?");
-        return $up->execute([$total,$idPago]);
+        return $up->execute([$total, $idPago]);
     }
 
-    public function ingresosPorMes(int $year): array {
+    public function ingresosPorMes(int $year): array
+    {
         $st = $this->db->prepare("SELECT DATE_FORMAT(fecha,'%m') mes, SUM(monto_total) total
                                    FROM Pago WHERE estado_pago='pagado' AND YEAR(fecha)=?
                                    GROUP BY mes ORDER BY mes");
@@ -88,7 +100,8 @@ class Pago extends BaseModel {
         return $st->fetchAll();
     }
 
-    public function ingresosPorPsicologo(): array {
+    public function ingresosPorPsicologo(): array
+    {
         $sql = "SELECT c.id_psicologo, SUM(p.monto_total) total
                 FROM Pago p
                 JOIN Cita c ON c.id = p.id_cita
@@ -97,17 +110,32 @@ class Pago extends BaseModel {
         return $this->db->query($sql)->fetchAll();
     }
 
+    /** Ingresos agrupados por especialidad del psicólogo */
+    public function ingresosPorEspecialidad(): array
+    {
+        $sql = "SELECT e.nombre especialidad, SUM(p.monto_total) total
+                FROM Pago p
+                JOIN Cita c ON c.id = p.id_cita
+                JOIN Psicologo ps ON ps.id = c.id_psicologo
+                LEFT JOIN Especialidad e ON e.id = ps.id_especialidad
+                WHERE p.estado_pago='pagado'
+                GROUP BY e.nombre
+                ORDER BY total DESC";
+        return $this->db->query($sql)->fetchAll();
+    }
+
     /** Crea pago (si no existe) y lo marca como pagado inmediatamente */
-    public function registrarPagoCita(int $idCita, float $montoBase=50.0): int {
+    public function registrarPagoCita(int $idCita, float $montoBase = 50.0): int
+    {
         $pago = $this->obtenerPorCita($idCita);
-        if(!$pago){
-            $id = $this->crearParaCita($idCita,$montoBase);
+        if (!$pago) {
+            $id = $this->crearParaCita($idCita, $montoBase);
             $this->marcarPagado($id);
             return $id;
         }
-        if($pago['estado_pago']!=='pagado'){
-            $this->marcarPagado((int)$pago['id']);
+        if ($pago['estado_pago'] !== 'pagado') {
+            $this->marcarPagado((int) $pago['id']);
         }
-        return (int)$pago['id'];
+        return (int) $pago['id'];
     }
 }
