@@ -850,6 +850,7 @@ class PsicologoController {
         $idPsico = $this->currentPsicologoId();
         
         require_once __DIR__ . '/../helpers/PDFHelper.php';
+        require_once __DIR__ . '/../helpers/ChartHelper.php';
         
         // Obtener todos los datos
         $citasPorMes = $this->citasPorMes($idPsico, 12);
@@ -1027,6 +1028,43 @@ class PsicologoController {
     
     $html .= '</tbody>
     </table>
+    
+    <div class="page-break"></div>';
+    
+    // ===== GENERAR GRAFICAS CON CHARTHELPER =====
+    
+    // 1. Citas por mes (gráfico de barras)
+    $mesesLabels = array_column($citasPorMes, 'mes');
+    $mesesData = array_map('intval', array_column($citasPorMes, 'total'));
+    $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes (Ultimos 12 meses)', 700, 300);
+    
+    // 2. Citas por estado (gráfico de pie)
+    $estadosLabels = [];
+    $estadosData = [];
+    foreach($citasPorEstado as $est) {
+        $estadosLabels[] = ucfirst($est['estado_cita']);
+        $estadosData[] = (int)$est['total'];
+    }
+    $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Distribucion de Citas por Estado', 600, 350);
+    
+    // 3. Ingresos por mes (gráfico de líneas)
+    $ingresosLabels = array_column($ingresosPorMes, 'mes');
+    $ingresosData = array_map('floatval', array_column($ingresosPorMes, 'total'));
+    $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos Mensuales', 700, 300);
+    
+    $html .= '
+    <h2>Graficas Estadisticas</h2>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="' . $chartCitasMes . '" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
+    
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="' . $chartEstado . '" style="width: 80%; max-width: 600px; margin-bottom: 15px;">
+    </div>
+    
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="' . $chartIngresos . '" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
     
     <div class="page-break"></div>
     
