@@ -18,10 +18,15 @@
 <div class="card mb-3">
   <div class="card-body py-2">
     <form method="post" action="<?= RUTA ?>pago/registrarPorCita" class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small mb-0">ID Cita</label>
-        <input type="number" name="id_cita" class="form-control form-control-sm" required min="1"
-          placeholder="ID de la cita">
+      <div class="col-md-5">
+        <label class="form-label small mb-0">Cita (realizada sin pago)</label>
+        <select name="id_cita" class="form-select form-select-sm" required>
+          <option value="">Seleccione una cita...</option>
+          <?php foreach ($citasSinPago as $c): ?>
+            <?php $label = '#'.(int)$c['id'].' — '.htmlspecialchars(substr($c['fecha_hora'],0,16)).' — '.htmlspecialchars($c['paciente_nombre']?:$c['psicologo_nombre']); ?>
+            <option value="<?= (int)$c['id'] ?>"><?= $label ?></option>
+          <?php endforeach; ?>
+        </select>
       </div>
       <div class="col-md-3">
         <label class="form-label small mb-0">Monto (opcional)</label>
@@ -29,7 +34,7 @@
           placeholder="Monto en $ (ej. 50.00)">
       </div>
       <div class="col-md-2 d-grid">
-        <button class="btn btn-success btn-sm" type="submit">Registrar Pago</button>
+        <button class="btn btn-success btn-sm" type="submit">Crear Pago Pendiente</button>
       </div>
       <div class="col-md-4 small text-muted">Si no especifica monto se usará el monto base configurado.</div>
     </form>
@@ -169,13 +174,13 @@
                 <i class="fas fa-file-pdf"></i>
               </a>
               <?php if (($t['estado_pago'] ?? '') !== 'pagado'): ?>
-                <form method="post" action="<?= RUTA ?>pago/registrarPorCita" style="display:inline-block; margin-left:6px;">
-                  <input type="hidden" name="id_cita" value="<?= (int) $t['id_cita'] ?>">
-                  <input type="hidden" name="monto" value="<?= htmlspecialchars($t['monto_total'] ?? 0) ?>">
+                <!-- Botón para marcar pago como pagado: redirige a la vista del pago donde se puede marcar pagado -->
+                <form method="post" action="<?= RUTA ?>pago/ver/<?= (int) ($t['id'] ?? 0) ?>" style="display:inline-block; margin-left:6px;">
+                  <input type="hidden" name="accion" value="marcar_pagado">
                   <button class="btn btn-success btn-sm" type="submit"
-                    onclick="return confirm('Registrar pago en caja para la cita #<?= (int) $t['id_cita'] ?>?');"
-                    title="Registrar pago">
-                    <i class="fas fa-cash-register"></i>
+                    onclick="return confirm('Marcar pago de la cita #<?= (int) $t['id_cita'] ?> como pagado?');"
+                    title="Marcar pagado">
+                    <i class="fas fa-check-circle"></i>
                   </button>
                 </form>
               <?php endif; ?>

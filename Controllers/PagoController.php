@@ -209,6 +209,26 @@ class PagoController extends BaseController
             if (!$exists) {
                 // Use crearParaCita but ensure it remains pending: crearParaCita marks pendiente by default
                 $idPago = $pagoModel->crearParaCita($idCita, $monto);
+                // Crear ticket asociado al pago (QR) pero mantener pago pendiente
+                $ticketModel = new TicketPago();
+                $ticket = $ticketModel->obtenerPorPago($idPago);
+                if (!$ticket) {
+                    try {
+                        $codigo = 'TCK-' . strtoupper(bin2hex(random_bytes(4)));
+                    } catch (Throwable $e) {
+                        $codigo = 'TCK-' . time();
+                    }
+                    $numero = date('YmdHis') . '-' . $idPago;
+                    $ticketUrl = RUTA . 'ticket/verPago/' . $idPago;
+                    $qr = QRHelper::generarQR('PAGO:' . $idPago . ' URL:' . $ticketUrl, 'ticket_' . $idPago);
+
+                    $ticketModel->crear([
+                        'id_pago' => $idPago,
+                        'codigo' => $codigo,
+                        'numero_ticket' => $numero,
+                        'qr_code' => $qr
+                    ]);
+                }
                 $_SESSION['flash_ok'] = 'Pago pendiente creado (ID ' . $idPago . ')';
             } else {
                 $_SESSION['flash_error'] = 'Ya existe un pago para esa cita (ID ' . $exists['id'] . ')';

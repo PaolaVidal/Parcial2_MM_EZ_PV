@@ -615,7 +615,28 @@ class AdminController extends BaseController
         require_once __DIR__ . '/../Models/TicketPago.php';
         $ticketModel = new TicketPago();
         $tickets = $ticketModel->listarTodos();
-        $this->render('tickets', ['tickets' => $tickets]);
+
+        // Obtener citas realizadas que no tengan pago asociado (ni ticket) para el combobox
+        $citasSinPago = [];
+        try {
+            $citaModel = new Cita();
+            $pdo = $citaModel->pdo();
+            $st = $pdo->prepare("SELECT c.id, c.fecha_hora, COALESCE(p.nombre, '') as paciente_nombre, COALESCE(u.nombre, '') as psicologo_nombre
+                                     FROM Cita c
+                                     LEFT JOIN Pago pay ON pay.id_cita = c.id
+                                     LEFT JOIN Paciente p ON p.id = c.id_paciente
+                                     LEFT JOIN Psicologo ps ON ps.id = c.id_psicologo
+                                     LEFT JOIN Usuario u ON u.id = ps.id_usuario
+                                     WHERE c.estado_cita = 'realizada' AND pay.id IS NULL
+                                     ORDER BY c.fecha_hora DESC LIMIT 200");
+            $st->execute();
+            $citasSinPago = $st->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
+            error_log('Error obteniendo citas sin pago: ' . $e->getMessage());
+            $citasSinPago = [];
+        }
+
+        $this->render('tickets', ['tickets' => $tickets, 'citasSinPago' => $citasSinPago]);
     }
 
     /** Buscar citas (JSON) usado por la UI admin para generar pagos pendientes */
