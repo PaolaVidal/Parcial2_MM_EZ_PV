@@ -12,7 +12,7 @@
     <div class="row g-3 align-items-end">
       <div class="col-sm-2">
         <label class="form-label mb-0 small">Estado</label>
-        <select id="fEstado" class="form-select form-select-sm" onchange="refrescarCitas()">
+  <select id="fEstado" class="form-select form-select-sm" onchange="filtrarCitas()">
           <option value="">Todos</option>
           <option value="pendiente">Pendiente</option>
           <option value="realizada">Realizada</option>
@@ -21,16 +21,16 @@
       </div>
       <div class="col-sm-2">
         <label class="form-label mb-0 small">Fecha</label>
-        <input type="date" id="fFecha" class="form-control form-control-sm" onchange="refrescarCitas()">
+  <input type="date" id="fFecha" class="form-control form-control-sm" onchange="filtrarCitas()">
       </div>
       <div class="col-sm-3">
         <label class="form-label mb-0 small">Texto (ID, motivo, paciente)</label>
-        <input type="text" id="fTexto" class="form-control form-control-sm" oninput="refrescarCitas()"
+        <input type="text" id="fTexto" class="form-control form-control-sm" oninput="filtrarCitas()"
           placeholder="Buscar...">
       </div>
       <div class="col-sm-3">
         <label class="form-label mb-0 small">Psicólogo</label>
-        <select id="fPs" class="form-select form-select-sm" onchange="refrescarCitas()">
+  <select id="fPs" class="form-select form-select-sm" onchange="filtrarCitas()">
           <option value="">Todos</option>
           <?php foreach ($psicologos as $p): ?>
             <option value="<?= (int) $p['id'] ?>">#<?= (int) $p['id'] ?>   <?= htmlspecialchars($p['nombre']) ?></option>
@@ -195,18 +195,72 @@
     document.getElementById('citasVacio').classList.add('d-none');
     datosCitas.forEach(c => {
       const tr = document.createElement('tr');
+      // data attributes used by filtrarCitas()
+      tr.setAttribute('data-estado', String(c.estado_cita || '').toLowerCase());
+      tr.setAttribute('data-fecha', String((c.fecha_hora || '').substring(0, 10)));
+      const pacienteNombre = (c.paciente_nombre || c.paciente || c.id_paciente || '').toString();
+      const psicologoNombre = (c.psicologo_nombre || c.psicologo || c.id_psicologo || '').toString();
+      tr.setAttribute('data-paciente', pacienteNombre.toLowerCase());
+      tr.setAttribute('data-psicologo', psicologoNombre.toLowerCase());
+      tr.setAttribute('data-id-paciente', String(c.id_paciente || ''));
+      tr.setAttribute('data-id-psicologo', String(c.id_psicologo || ''));
+      tr.setAttribute('data-motivo', String(c.motivo_consulta || '').toLowerCase());
+
       const countEval = c.count_evaluaciones || 0;
       const evalHtml = countEval > 0
         ? `<button class='btn btn-sm btn-outline-info' onclick='verEvaluaciones(${c.id})' title='Ver evaluaciones'><i class='fas fa-clipboard-check'></i> ${countEval}</button>`
         : `<span class='text-muted small'>0</span>`;
 
       tr.innerHTML = `<td>${c.id}</td>
-      <td>${(c.paciente_nombre || c.paciente || c.id_paciente)}</td><td>${(c.psicologo_nombre || c.psicologo || c.id_psicologo)}</td><td>${c.fecha_hora}</td><td>${formatearEstado(c.estado_cita)}</td>
+      <td>${pacienteNombre}</td><td>${psicologoNombre}</td><td>${c.fecha_hora}</td><td>${formatearEstado(c.estado_cita)}</td>
       <td class='text-center'>${evalHtml}</td>
       <td class='small' style='max-width:200px'>${(c.motivo_consulta || '').replace(/</g, '&lt;')}</td>
       <td class='text-nowrap'>${accionesHtml(c)}</td>`;
       tb.appendChild(tr);
     });
+
+    // Apply current filters immediately after rendering
+    filtrarCitas();
+  }
+
+  function filtrarCitas() {
+    const est = (document.getElementById('fEstado').value || '').trim().toLowerCase();
+    const fecha = (document.getElementById('fFecha').value || '').trim();
+    const texto = (document.getElementById('fTexto').value || '').trim().toLowerCase();
+    const ps = (document.getElementById('fPs').value || '').trim();
+
+    let visibles = 0, total = 0;
+    document.querySelectorAll('#tablaCitasAdmin tbody tr').forEach(tr => {
+      total++;
+      const estRow = (tr.dataset.estado || '').toLowerCase();
+      const fechaRow = tr.dataset.fecha || '';
+      const pacRow = tr.dataset.paciente || '';
+      const psRow = tr.dataset.psicologo || '';
+      const idPac = tr.dataset.idPaciente || '';
+      const idPs = tr.dataset.idPsicologo || '';
+      const motivo = tr.dataset.motivo || '';
+
+      let ok = true;
+
+      if (est && estRow !== est) ok = false;
+      if (ok && fecha && fechaRow !== fecha) ok = false;
+      if (ok && ps) {
+        // ps filter is id (from select). compare to data-id-psicologo
+        if (String(idPs) !== String(ps)) ok = false;
+      }
+      if (ok && texto) {
+        // search in id, motivo, paciente, psicologo
+        const idRow = tr.querySelector('td') ? tr.querySelector('td').textContent : '';
+        const hay = idRow.includes(texto) || motivo.includes(texto) || pacRow.includes(texto) || psRow.includes(texto) || idPac.includes(texto) || idPs.includes(texto);
+        if (!hay) ok = false;
+      }
+
+      tr.style.display = ok ? '' : 'none';
+      if (ok) visibles++;
+    });
+
+    const vacio = document.getElementById('citasVacio');
+    if (visibles === 0) vacio.classList.remove('d-none'); else vacio.classList.add('d-none');
   }
   function accionesHtml(c) {
     const countEval = c.count_evaluaciones || 0;
