@@ -212,6 +212,7 @@ class CitaController extends BaseController
     public function pdf($id = 0): void
     {
         $id = (int) $id;
+        error_log('CitaController::pdf invoked with id=' . $id);
         if ($id <= 0) {
             http_response_code(400);
             header('Content-Type: text/plain; charset=utf-8');

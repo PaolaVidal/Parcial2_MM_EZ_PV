@@ -158,6 +158,8 @@ class PDFHelper
             ob_end_clean();
         }
 
+        error_log('PDFHelper::generarPDF streaming ' . $filename . '.pdf; headers_sent=' . (headers_sent() ? '1' : '0'));
+
         // Salida
         $dompdf->stream($filename . '.pdf', [
             'Attachment' => $download ? 1 : 0

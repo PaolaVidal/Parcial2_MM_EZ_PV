@@ -81,7 +81,11 @@ class Contenido
 $contenido = new Contenido();
 
 // ----- Autenticación básica (ahora pacientes NO inician sesión) -----
-$urlActual = $_GET['url'] ?? '';
+$rawUrl = $_GET['url'] ?? '';
+// Normalizar url: eliminar prefijos accidentales que no sean alfanuméricos (p. ej. '-' introducido por JS)
+$sanUrl = preg_replace('/^[^A-Za-z0-9]+/', '', $rawUrl);
+$_GET['url'] = $sanUrl;
+$urlActual = $sanUrl;
 if (!isset($_SESSION['usuario'])) {
     $publica = false;
     // Prefijos / rutas públicas permitidas
@@ -181,7 +185,8 @@ if (isset($_GET['url'])) {
     $rawEndpoints = [
         // Endpoints que deben devolver JSON o respuesta sin envolver en layout
         'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar', 'guardarEvaluacion'],
-        'ticket' => ['qr', 'pdf', 'consultarPago'],
+    'ticket' => ['qr', 'pdf', 'consultarPago'],
+    'cita' => ['pdf'],
         // Procesos administrativos que solo hacen POST + redirect (evita pantalla en blanco)
         'admin' => ['procesarSolicitud'],
         // Especialidades (CRUD vía POST -> redirect)
@@ -194,7 +199,17 @@ if (isset($_GET['url'])) {
     if (isset($rawEndpoints[$paginaEarly]) && in_array($accionEarly, $rawEndpoints[$paginaEarly], true)) {
         $file = $contenido->obtenerContenido($paginaEarly);
         if ($file) {
+            // Capture output during require to detect stray echoes/BOMs
+            ob_start();
             require_once $file;
+            $requireOutput = ob_get_clean();
+            if ($requireOutput !== '') {
+                error_log('Require output when including ' . $file . ' (raw-endpoint): ' . substr($requireOutput, 0, 1000));
+            }
+            // Ensure no output buffers remain that could make headers_sent() true
+            while (ob_get_level() > 0) {
+                @ob_end_clean();
+            }
             $class1 = ucfirst($paginaEarly) . 'Controller';
             $class2 = strtolower($paginaEarly) . 'controller';
             $clase = class_exists($class1) ? $class1 : (class_exists($class2) ? $class2 : null);

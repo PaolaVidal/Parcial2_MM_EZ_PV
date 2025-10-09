@@ -180,7 +180,7 @@ foreach ($pacientes as $p) {
           <?php $img = htmlspecialchars($c['qr_code']); ?>
           <button type="button" class="btn btn-outline-secondary btn-sm"
             onclick="mostrarQRModal(this,'<?= $img ?>','CITA:<?= (int) $c['id'] ?>')"
-            data-pdf="<?= htmlspecialchars(RUTA . 'cita/pdf/' . (int) $c['id']) ?>"
+            data-pdf="<?= htmlspecialchars((defined('USE_PRETTY_URLS') && USE_PRETTY_URLS) ? (RUTA . 'cita/pdf/' . (int) $c['id']) : (RUTA . 'index.php?url=cita/pdf/' . (int) $c['id'])) ?>"
             data-img="<?= htmlspecialchars($btnImg) ?>" title="Ver QR">QR</button>
         <td>
           <?php if ($p && $p['estado_pago'] === 'pagado'): ?>
@@ -377,10 +377,22 @@ foreach ($pacientes as $p) {
           }
           const parts = [];
           if (pdf) {
+            // sanitize pdf string: trim and remove accidental leading chars (like '-')
+            pdf = pdf.toString().trim().replace(/^[-\s]+/, '');
+            // If pdf is relative, prepend BASE (which already contains trailing slash)
+            if (!/^https?:/i.test(pdf)) {
+              pdf = pdf.replace(/^\/+/, '');
+              pdf = BASE + pdf;
+            }
             parts.push('<a href="' + pdf + '" target="_blank" class="btn btn-sm btn-danger me-1"><i class="fas fa-file-pdf"></i> Descargar PDF</a>');
             parts.push('<button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="printPdf(\'' + pdf.replace(/'/g, "\\'") + '\')"><i class="fas fa-print"></i> Imprimir</button>');
           }
           if (imgLink) {
+            imgLink = imgLink.toString().trim().replace(/^[-\s]+/, '');
+            if (!/^https?:/i.test(imgLink)) {
+              imgLink = imgLink.replace(/^\/+/, '');
+              imgLink = BASE + imgLink;
+            }
             parts.push('<a href="' + imgLink + '" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fas fa-image"></i> Ver imagen</a>');
           }
           if (parts.length) {
