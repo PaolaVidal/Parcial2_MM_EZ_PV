@@ -1,4 +1,3 @@
-
 <?php /* layout por index */ ?>
 <h1 class="h5 mb-3">Psicólogos</h1>
 <?php if (!empty($error)): ?>
@@ -78,7 +77,7 @@
           <td class="text-nowrap">
             <button name="accion" value="editar" class="btn btn-sm btn-outline-success">Guardar</button>
           </td>
-          <td><a class="btn btn-sm btn-outline-primary" href="<?= url('admin', 'horarios') ?>?ps=<?= (int) $p['id'] ?>"
+          <td><a class="btn btn-sm btn-outline-primary" href="<?= url('admin', 'horarios', ['ps' => (int) $p['id']]) ?>"
               title="Gestionar horarios">Gestionar</a></td>
         </form>
       </tr>

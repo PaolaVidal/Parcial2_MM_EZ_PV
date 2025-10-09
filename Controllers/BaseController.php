@@ -37,6 +37,16 @@ class BaseController
             echo '<div class="alert alert-danger">Acceso denegado. Se requiere rol de administrador.</div>';
             exit;
         }
+        // Revalidar estado activo
+        require_once __DIR__ . '/../Models/Usuario.php';
+        $um = new Usuario();
+        $estado = $um->obtenerEstado((int) $_SESSION['usuario']['id']);
+        if ($estado !== 'activo') {
+            session_destroy();
+            http_response_code(403);
+            echo '<div class="alert alert-danger">Tu cuenta ha sido desactivada. Contacta al administrador.</div>';
+            exit;
+        }
     }
 
     protected function requirePsicologo(): void
@@ -44,6 +54,16 @@ class BaseController
         if (!isset($_SESSION['usuario']) || $_SESSION['usuario']['rol'] !== 'psicologo') {
             http_response_code(403);
             echo '<div class="alert alert-danger">Acceso denegado. Se requiere rol de psicólogo.</div>';
+            exit;
+        }
+        // Revalidar estado activo
+        require_once __DIR__ . '/../Models/Usuario.php';
+        $um = new Usuario();
+        $estado = $um->obtenerEstado((int) $_SESSION['usuario']['id']);
+        if ($estado !== 'activo') {
+            session_destroy();
+            http_response_code(403);
+            echo '<div class="alert alert-danger">Tu cuenta ha sido desactivada. Contacta al administrador.</div>';
             exit;
         }
     }

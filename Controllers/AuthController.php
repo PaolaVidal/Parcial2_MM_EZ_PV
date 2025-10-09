@@ -42,7 +42,8 @@ class AuthController extends BaseController
                 }
                 return;
             }
-            $this->render('auth/login', ['error' => 'Credenciales inválidas']);
+            // Podría ser credenciales inválidas o cuenta inactiva; mensaje genérico
+            $this->render('auth/login', ['error' => 'Credenciales inválidas o cuenta inactiva']);
             return;
         }
         $this->render('auth/login');

@@ -165,6 +165,14 @@ class PublicController extends BaseController
             unset($_SESSION['paciente_id'], $_SESSION['paciente_nombre'], $_SESSION['paciente_dui']);
             $this->safeRedirect(RUTA . 'public/acceso'); // termina ejecución
         }
+        // Si existe campo estado y no está activo, forzar salida
+        if (isset($pac['estado']) && $pac['estado'] !== 'activo') {
+            unset($_SESSION['paciente_id'], $_SESSION['paciente_nombre'], $_SESSION['paciente_dui']);
+            if (isset($_SESSION['usuario']) && ($_SESSION['usuario']['rol'] ?? '') === 'paciente') {
+                unset($_SESSION['usuario']);
+            }
+            $this->safeRedirect(RUTA . 'public/acceso?msg=Cuenta%20inactiva');
+        }
         // Fallback: si el login se hizo antes de introducir la sesión unificada o se perdió $_SESSION['usuario']
         if (!isset($_SESSION['usuario']) || (($_SESSION['usuario']['rol'] ?? '') !== 'paciente')) {
             $_SESSION['usuario'] = [

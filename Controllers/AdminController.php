@@ -586,6 +586,7 @@ class AdminController extends BaseController
         $hM = new HorarioPsicologo();
         $msg = '';
         $err = '';
+        $idSelGet = (int) ($_GET['ps'] ?? 0); // conservar selección actual en GET
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $accion = $_POST['accion'] ?? '';
             try {
@@ -596,8 +597,13 @@ class AdminController extends BaseController
                     $fin = $_POST['hora_fin'] ?? '';
                     $hM->crear($idPs, $dia, $ini, $fin);
                     $msg = 'Horario agregado';
+                    $idSelGet = $idPs; // mantener selección
                 } elseif ($accion === 'eliminar') {
                     $idH = (int) ($_POST['id_horario'] ?? 0);
+                    $idPs = (int) ($_POST['id_psicologo'] ?? 0);
+                    if ($idPs) {
+                        $idSelGet = $idPs;
+                    }
                     if ($idH) {
                         $hM->eliminar($idH);
                         $msg = 'Horario eliminado';
@@ -606,10 +612,12 @@ class AdminController extends BaseController
             } catch (Throwable $e) {
                 $err = $e->getMessage();
             }
-            $this->safeRedirect(url('admin', 'horarios') . ($err ? '&err=' . urlencode($err) : '&ok=1'));
+            // Redirigir conservando psicólogo seleccionado
+            $base = url('admin', 'horarios', $idSelGet ? ['ps' => $idSelGet] : []);
+            $this->safeRedirect($base . ($err ? '&err=' . urlencode($err) : '&ok=1'));
         }
         $psicologos = $psM->listarTodos();
-        $idSel = (int) ($_GET['ps'] ?? 0);
+        $idSel = $idSelGet;
         $horarios = $idSel ? $hM->listarPorPsicologo($idSel) : [];
         $this->render('horarios', ['psicologos' => $psicologos, 'horarios' => $horarios, 'idSel' => $idSel]);
     }
@@ -693,7 +701,7 @@ class AdminController extends BaseController
         $mes = $_GET['mes'] ?? '';
         $psicologoFiltro = (int) ($_GET['psicologo'] ?? 0);
 
-        // Exportación
+        // Exportación directa
         if (isset($_GET['export'])) {
             $this->exportarEstadisticas($_GET['export'], $anio, $mes, $psicologoFiltro);
             return;
@@ -875,6 +883,27 @@ class AdminController extends BaseController
         require_once __DIR__ . '/../helpers/ExcelHelper.php';
         require_once __DIR__ . '/../helpers/ChartHelper.php';
 
+        // Asegurar que no haya salida previa (evita PDF corrupto / headers enviados)
+        while (ob_get_level()) {
+            @ob_end_clean();
+        }
+
+        // Validaciones de entorno para PDF de gráficas
+        if (str_starts_with($formato, 'pdf') && in_array($formato, ['pdf_graficas', 'pdf_datos', 'pdf'])) {
+            if (!extension_loaded('gd')) {
+                // Fallback: generar PDF simple sin gráficas explicando el problema
+                $htmlFallback = '<html><head><meta charset="UTF-8"><style>body{font-family:DejaVu Sans,Arial,sans-serif;font-size:12px;margin:25px;} .alert{border:1px solid #dc3545;background:#f8d7da;color:#842029;padding:15px;border-radius:6px;} h1{font-size:20px;margin-top:0;color:#2C3E50;} code{background:#eee;padding:2px 4px;border-radius:3px;} ul{margin-top:8px}</style></head><body>'
+                    . '<h1>Exportación de Gráficas</h1>'
+                    . '<div class="alert"><strong>Advertencia:</strong> La extensión <code>gd</code> de PHP no está habilitada, por lo que no se pueden generar las imágenes de las gráficas.<br>'
+                    . 'Activa GD en <code>php.ini</code> (quita el ; a la línea <code>extension=gd</code>) y reinicia Apache. Luego vuelve a intentar.</div>'
+                    . '<p>Parámetros solicitados: Año <strong>' . htmlspecialchars((string) $anio) . '</strong>' . ($mes ? ', Mes <strong>' . htmlspecialchars($mes) . '</strong>' : '') . '.</p>'
+                    . '<p>Mientras tanto este PDF se genera como fallback sin gráficas.</p>'
+                    . '</body></html>';
+                PDFHelper::generarPDF($htmlFallback, 'Graficas_Estadisticas_FALLO_GD_' . $anio . ($mes ? '_' . $mes : ''), 'portrait', 'letter', true);
+                return;
+            }
+        }
+
         // Obtener los mismos datos que la vista
         $citaModel = new Cita();
         $pdo = $citaModel->pdo();
@@ -924,13 +953,13 @@ class AdminController extends BaseController
 
             // Agrupar por psicólogo (para top)
             $porPsicologo = [];
-            foreach($citas as $c) {
+            foreach ($citas as $c) {
                 $ps = $c['psicologo'] ?? 'Desconocido';
-                if(!isset($porPsicologo[$ps])) {
+                if (!isset($porPsicologo[$ps])) {
                     $porPsicologo[$ps] = ['total' => 0, 'ingresos' => 0, 'especialidad' => $c['especialidad'] ?? 'N/A'];
                 }
                 $porPsicologo[$ps]['total']++;
-                $porPsicologo[$ps]['ingresos'] += (float)$c['monto'];
+                $porPsicologo[$ps]['ingresos'] += (float) $c['monto'];
             }
             arsort($porPsicologo);
             $topPsicologos = array_slice($porPsicologo, 0, 5, true);
@@ -1053,10 +1082,10 @@ class AdminController extends BaseController
     </table>
     
     <div class="page-break"></div>';
-    
-    // Generar gráficas con ChartHelper
-    // 1. Citas por mes
-    $stCitasMes = $pdo->prepare("
+
+            // Generar gráficas con ChartHelper (ya validamos GD arriba)
+            // 1. Citas por mes
+            $stCitasMes = $pdo->prepare("
         SELECT DATE_FORMAT(c.fecha_hora, '%m-%Y') as mes, COUNT(*) as total
         FROM Cita c
         WHERE YEAR(c.fecha_hora) = ?
@@ -1064,35 +1093,36 @@ class AdminController extends BaseController
         GROUP BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
         ORDER BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
     ");
-    $paramsMes = [$anio];
-    if($psicologoFiltro) $paramsMes[] = $psicologoFiltro;
-    $stCitasMes->execute($paramsMes);
-    $citasPorMesData = $stCitasMes->fetchAll(PDO::FETCH_ASSOC);
-    
-    $mesesLabels = array_column($citasPorMesData, 'mes');
-    $mesesData = array_column($citasPorMesData, 'total');
-    $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes', 700, 300);
-    
-    // 2. Citas por estado
-    $stEstado = $pdo->prepare("
+            $paramsMes = [$anio];
+            if ($psicologoFiltro)
+                $paramsMes[] = $psicologoFiltro;
+            $stCitasMes->execute($paramsMes);
+            $citasPorMesData = $stCitasMes->fetchAll(PDO::FETCH_ASSOC);
+
+            $mesesLabels = array_column($citasPorMesData, 'mes');
+            $mesesData = array_column($citasPorMesData, 'total');
+            $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes', 700, 300);
+
+            // 2. Citas por estado
+            $stEstado = $pdo->prepare("
         SELECT estado_cita as estado, COUNT(*) as total
         FROM Cita c
         WHERE $whereSQL
         GROUP BY estado_cita
     ");
-    $stEstado->execute($params);
-    $citasPorEstadoData = $stEstado->fetchAll(PDO::FETCH_ASSOC);
-    
-    $estadosLabels = [];
-    $estadosData = [];
-    foreach($citasPorEstadoData as $est) {
-        $estadosLabels[] = ucfirst($est['estado']);
-        $estadosData[] = (int)$est['total'];
-    }
-    $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Citas por Estado', 600, 350);
-    
-    // 3. Ingresos por mes
-    $stIngresosMes = $pdo->prepare("
+            $stEstado->execute($params);
+            $citasPorEstadoData = $stEstado->fetchAll(PDO::FETCH_ASSOC);
+
+            $estadosLabels = [];
+            $estadosData = [];
+            foreach ($citasPorEstadoData as $est) {
+                $estadosLabels[] = ucfirst($est['estado']);
+                $estadosData[] = (int) $est['total'];
+            }
+            $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Citas por Estado', 600, 350);
+
+            // 3. Ingresos por mes
+            $stIngresosMes = $pdo->prepare("
         SELECT DATE_FORMAT(c.fecha_hora, '%m-%Y') as mes, COALESCE(SUM(p.monto_total), 0) as total
         FROM Pago p
         JOIN Cita c ON p.id_cita = c.id
@@ -1102,20 +1132,20 @@ class AdminController extends BaseController
         GROUP BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
         ORDER BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
     ");
-    $stIngresosMes->execute($paramsMes);
-    $ingresosPorMesData = $stIngresosMes->fetchAll(PDO::FETCH_ASSOC);
-    
-    $ingresosLabels = array_column($ingresosPorMesData, 'mes');
-    $ingresosData = array_map('floatval', array_column($ingresosPorMesData, 'total'));
-    $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos por Mes', 700, 300);
-    
-    // Si el formato es solo gráficas debemos generar un PDF minimalista: solo header + gráficas + footer
-    if($soloGraficas) {
-        // Preparar textos seguros para interpolación
-        $periodoStr = htmlspecialchars($anio . ($mes ? '/' . $mes : ' (Todo el ano)'));
-        $generadoStr = date('d/m/Y H:i:s');
+            $stIngresosMes->execute($paramsMes);
+            $ingresosPorMesData = $stIngresosMes->fetchAll(PDO::FETCH_ASSOC);
 
-        $htmlGraphs = <<<HTML
+            $ingresosLabels = array_column($ingresosPorMesData, 'mes');
+            $ingresosData = array_map('floatval', array_column($ingresosPorMesData, 'total'));
+            $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos por Mes', 700, 300);
+
+            // Si el formato es solo gráficas debemos generar un PDF minimalista: solo header + gráficas + footer
+            if ($soloGraficas) {
+                // Preparar textos seguros para interpolación
+                $periodoStr = htmlspecialchars($anio . ($mes ? '/' . $mes : ' (Todo el ano)'));
+                $generadoStr = date('d/m/Y H:i:s');
+
+                $htmlGraphs = <<<HTML
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
 <head>
@@ -1155,23 +1185,23 @@ class AdminController extends BaseController
 </html>
 HTML;
 
-        PDFHelper::generarPDF($htmlGraphs, 'Graficas_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
-        return;
-    }
+                PDFHelper::generarPDF($htmlGraphs, 'Graficas_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
+                return;
+            }
 
-        // Si es pdf_datos -> generar un PDF minimalista y con tablas sencillas (Resumen + Top 5 Psicologos)
-        if($soloDatos) {
+            // Si es pdf_datos -> generar un PDF minimalista y con tablas sencillas (Resumen + Top 5 Psicologos)
+            if ($soloDatos) {
                 // Construir filas de Top 5 Psicologos
                 $rows = '';
                 $pos = 1;
-                foreach($topPsicologos as $nombre => $data) {
-                        $rows .= '<tr>'
-                                . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . $pos++ . '</td>'
-                                . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8') . '</td>'
-                                . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($data['especialidad'] ?? 'N/A', ENT_QUOTES, 'UTF-8') . '</td>'
-                                . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . ($data['total'] ?? 0) . '</td>'
-                                . '<td style="padding:6px;border:1px solid #ddd;text-align:right">$' . number_format($data['ingresos'] ?? 0, 2) . '</td>'
-                                . '</tr>';
+                foreach ($topPsicologos as $nombre => $data) {
+                    $rows .= '<tr>'
+                        . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . $pos++ . '</td>'
+                        . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8') . '</td>'
+                        . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($data['especialidad'] ?? 'N/A', ENT_QUOTES, 'UTF-8') . '</td>'
+                        . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . ($data['total'] ?? 0) . '</td>'
+                        . '<td style="padding:6px;border:1px solid #ddd;text-align:right">$' . number_format($data['ingresos'] ?? 0, 2) . '</td>'
+                        . '</tr>';
                 }
 
                 $periodoStr = htmlspecialchars($anio . ($mes ? '/' . $mes : ' (Todo el ano)'));
@@ -1228,14 +1258,14 @@ HTML;
                 // Enviar PDF de datos
                 PDFHelper::generarPDF($htmlDatos, 'Datos_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'portrait', 'letter', true);
                 return;
-        }
+            }
 
-        // Si no es solo gráficas ni datos (pdf legacy) agregamos footer correctamente sin literales '\n'
-        $html .= "\n    <div class=\"footer\">\n        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial<br>\n        Pagina 1 de 1 - " . $totalCitas . " registros totales\n    </div>\n</body>\n</html>";
+            // Si no es solo gráficas ni datos (pdf legacy) agregamos footer correctamente sin literales '\n'
+            $html .= "\n    <div class=\"footer\">\n        Sistema de Gestion de Consultorio Psicologico - Reporte Confidencial<br>\n        Pagina 1 de 1 - " . $totalCitas . " registros totales\n    </div>\n</body>\n</html>";
 
-                        PDFHelper::generarPDF($html, 'Reporte_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
-            
-        } else if($formato === 'excel') {
+            PDFHelper::generarPDF($html, 'Reporte_Estadisticas_' . $anio . ($mes ? '_' . $mes : '') . '_' . date('Ymd'), 'landscape', 'letter', true);
+
+        } else if ($formato === 'excel') {
             // HOJA 1: Resumen General
             $dataResumen = [
                 ['ESTADÍSTICAS DEL SISTEMA - ' . $anio . ($mes ? '/' . $mes : ''), '', '', ''],

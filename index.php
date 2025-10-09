@@ -114,6 +114,30 @@ if (isset($_GET['url'])) {
     $paginaEarly = $parts[0] ?? '';
     $accionEarly = $parts[1] ?? 'index';
 
+    // Exportación de estadísticas admin (PDF/Excel) antes de imprimir el layout
+    if ($paginaEarly === 'admin' && $accionEarly === 'estadisticas' && isset($_GET['export'])) {
+        $fileAdmin = $contenido->obtenerContenido('admin');
+        if ($fileAdmin) {
+            require_once $fileAdmin;
+            if (class_exists('AdminController')) {
+                $ctrl = new AdminController();
+                // Replicar filtros básicos usados en el método estadisticas
+                $anio = (int) ($_GET['anio'] ?? date('Y'));
+                $mes = $_GET['mes'] ?? '';
+                $psicologoFiltro = (int) ($_GET['psicologo'] ?? 0);
+                // Usamos el propio método estadisticas que internamente llama a exportarEstadisticas y hace return
+                // para mantener la lógica de requireAdmin y datos.
+                // Limpiamos buffers para evitar basura antes del PDF/Excel
+                while (ob_get_level()) {
+                    @ob_end_clean();
+                }
+                // Ajuste: inyectar export param tal cual espera el método
+                $ctrl->estadisticas(); // dentro detectará $_GET['export'] y generará el archivo
+                exit; // detener front controller
+            }
+        }
+    }
+
     $rawEndpoints = [
         // Endpoints que deben devolver JSON o respuesta sin envolver en layout
         'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar'],
@@ -421,7 +445,7 @@ if (empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))) {
         crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"
         crossorigin="anonymous"></script>
-<script src="<?= RUTA ?>public/js/responsive-tables.js"></script>
+    <script src="<?= RUTA ?>public/js/responsive-tables.js"></script>
 </body>
 
 </html>

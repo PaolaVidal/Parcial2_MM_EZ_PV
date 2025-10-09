@@ -251,9 +251,10 @@ class Paciente extends BaseModel
             return null;
         // Incluir DUI si existe la columna para mantener compatibilidad en sesión
         $selectDui = $this->c($this->colDui) ? $this->colDui . ' dui, ' : '';
+        $whereEstado = $this->c($this->colEstado) ? " AND {$this->colEstado}='activo'" : '';
         $sql = "SELECT id, $selectDui{$this->colCodigoAcceso} codigo_acceso, {$this->colNombre} nombre
                 FROM {$this->tabla}
-                WHERE {$this->colCodigoAcceso}=? LIMIT 1";
+                WHERE {$this->colCodigoAcceso}=?$whereEstado LIMIT 1";
         $st = $this->db->prepare($sql);
         $st->execute([$codigo]);
         $r = $st->fetch(PDO::FETCH_ASSOC);
@@ -276,7 +277,9 @@ class Paciente extends BaseModel
             'telefono' => $this->colTelefono,
             'direccion' => $this->colDireccion,
             'fecha_nacimiento' => $this->colFechaNac,
-            'genero' => $this->colGenero
+            'genero' => $this->colGenero,
+            // Se agrega DUI como campo editable vía solicitud (si la columna existe)
+            'dui' => $this->colDui
         ];
 
         // Verificar que el campo sea válido
@@ -289,7 +292,21 @@ class Paciente extends BaseModel
             return false;
         }
 
-        // Actualizar el campo
+        // Normalización / validaciones específicas
+        if ($campo === 'dui') {
+            // Permitir sólo dígitos y guión, formato típico ########-# (no forzamos longitud exacta pero limpiamos)
+            $valor = preg_replace('/[^0-9-]/', '', $valor);
+            // Opcional: si tiene 9 dígitos sin guión, insertar guión antes del último dígito
+            if (preg_match('/^\d{9}$/', $valor)) {
+                $valor = substr($valor, 0, 8) . '-' . substr($valor, 8);
+            }
+            // Validación básica (8 dígitos + guión + 1 dígito) -> ####### #-# or ########-#
+            if (!preg_match('/^\d{8}-\d$/', $valor)) {
+                // Si no cumple, rechazamos actualización silenciosamente
+                return false;
+            }
+        }
+
         $sql = "UPDATE {$this->tabla} SET {$columna} = :valor WHERE id = :id";
         $st = $this->db->prepare($sql);
         return $st->execute([':valor' => $valor, ':id' => $id]);

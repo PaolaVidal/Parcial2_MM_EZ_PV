@@ -24,43 +24,43 @@ $mesActual = date('m');
     <i class="fas fa-filter me-2"></i>Filtros de Búsqueda
   </div>
   <div class="card-body">
-    <form method="GET" action="<?= url('admin','estadisticas') ?>" class="row g-3">
+    <form method="GET" action="<?= url('admin', 'estadisticas') ?>" class="row g-3">
       <div class="col-md-3">
         <label class="form-label small fw-bold">Año</label>
         <select name="anio" class="form-select">
-          <?php for($a = date('Y'); $a >= 2020; $a--): ?>
+          <?php for ($a = date('Y'); $a >= 2020; $a--): ?>
             <option value="<?= $a ?>" <?= ($anio ?? $anioActual) == $a ? 'selected' : '' ?>><?= $a ?></option>
           <?php endfor; ?>
         </select>
       </div>
-      
+
       <div class="col-md-3">
         <label class="form-label small fw-bold">Mes</label>
         <select name="mes" class="form-select">
           <option value="">Todos</option>
-          <?php 
-          $meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-          for($m = 1; $m <= 12; $m++): 
-          ?>
-            <option value="<?= str_pad($m,2,'0',STR_PAD_LEFT) ?>" <?= ($mes ?? '') == str_pad($m,2,'0',STR_PAD_LEFT) ? 'selected' : '' ?>>
-              <?= $meses[$m-1] ?>
+          <?php
+          $meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+          for ($m = 1; $m <= 12; $m++):
+            ?>
+            <option value="<?= str_pad($m, 2, '0', STR_PAD_LEFT) ?>" <?= ($mes ?? '') == str_pad($m, 2, '0', STR_PAD_LEFT) ? 'selected' : '' ?>>
+              <?= $meses[$m - 1] ?>
             </option>
           <?php endfor; ?>
         </select>
       </div>
-      
+
       <div class="col-md-3">
         <label class="form-label small fw-bold">Psicólogo</label>
         <select name="psicologo" class="form-select">
           <option value="">Todos</option>
-          <?php foreach($psicologos as $ps): ?>
+          <?php foreach ($psicologos as $ps): ?>
             <option value="<?= $ps['id'] ?>" <?= ($psicologo ?? '') == $ps['id'] ? 'selected' : '' ?>>
               <?= htmlspecialchars($ps['nombre']) ?>
             </option>
           <?php endforeach; ?>
         </select>
       </div>
-      
+
       <div class="col-md-3">
         <label class="form-label small fw-bold">&nbsp;</label>
         <div class="d-grid gap-2">
@@ -84,7 +84,7 @@ $mesActual = date('m');
       </div>
     </div>
   </div>
-  
+
   <div class="col-md-3">
     <div class="card border-success">
       <div class="card-body text-center">
@@ -94,7 +94,7 @@ $mesActual = date('m');
       </div>
     </div>
   </div>
-  
+
   <div class="col-md-3">
     <div class="card border-warning">
       <div class="card-body text-center">
@@ -104,7 +104,7 @@ $mesActual = date('m');
       </div>
     </div>
   </div>
-  
+
   <div class="col-md-3">
     <div class="card border-info">
       <div class="card-body text-center">
@@ -128,7 +128,7 @@ $mesActual = date('m');
       </div>
     </div>
   </div>
-  
+
   <div class="col-md-6">
     <div class="card">
       <div class="card-header bg-white">
@@ -174,10 +174,13 @@ $mesActual = date('m');
               </tr>
             </thead>
             <tbody>
-              <?php if(empty($topPsicologos)): ?>
-                <tr><td colspan="5" class="text-center text-muted py-3">Sin datos</td></tr>
+              <?php if (empty($topPsicologos)): ?>
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-3">Sin datos</td>
+                </tr>
               <?php else: ?>
-                <?php $pos = 1; foreach($topPsicologos as $tp): ?>
+                <?php $pos = 1;
+                foreach ($topPsicologos as $tp): ?>
                   <tr>
                     <td><?= $pos++ ?></td>
                     <td><?= htmlspecialchars($tp['nombre']) ?></td>
@@ -193,7 +196,7 @@ $mesActual = date('m');
       </div>
     </div>
   </div>
-  
+
   <div class="col-md-6">
     <div class="card">
       <div class="card-header bg-white">
@@ -211,10 +214,13 @@ $mesActual = date('m');
               </tr>
             </thead>
             <tbody>
-              <?php if(empty($topPacientes)): ?>
-                <tr><td colspan="4" class="text-center text-muted py-3">Sin datos</td></tr>
+              <?php if (empty($topPacientes)): ?>
+                <tr>
+                  <td colspan="4" class="text-center text-muted py-3">Sin datos</td>
+                </tr>
               <?php else: ?>
-                <?php $pos = 1; foreach($topPacientes as $tp): ?>
+                <?php $pos = 1;
+                foreach ($topPacientes as $tp): ?>
                   <tr>
                     <td><?= $pos++ ?></td>
                     <td><?= htmlspecialchars($tp['nombre']) ?></td>
@@ -252,16 +258,18 @@ $mesActual = date('m');
           </tr>
         </thead>
         <tbody>
-          <?php if(empty($horariosCompletos)): ?>
-            <tr><td colspan="8" class="text-center text-muted py-3">Sin horarios configurados</td></tr>
+          <?php if (empty($horariosCompletos)): ?>
+            <tr>
+              <td colspan="8" class="text-center text-muted py-3">Sin horarios configurados</td>
+            </tr>
           <?php else: ?>
-            <?php foreach($horariosCompletos as $h): ?>
+            <?php foreach ($horariosCompletos as $h): ?>
               <tr>
                 <td class="fw-bold"><?= htmlspecialchars($h['nombre']) ?></td>
-                <?php foreach(['lunes','martes','miércoles','jueves','viernes','sábado','domingo'] as $dia): ?>
+                <?php foreach (['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'] as $dia): ?>
                   <td class="small">
-                    <?php if(isset($h['horarios'][$dia])): ?>
-                      <?php foreach($h['horarios'][$dia] as $bloque): ?>
+                    <?php if (isset($h['horarios'][$dia])): ?>
+                      <?php foreach ($h['horarios'][$dia] as $bloque): ?>
                         <div class="badge bg-success mb-1">
                           <?= date('h:i A', strtotime($bloque['hora_inicio'])) ?><br>
                           <?= date('h:i A', strtotime($bloque['hora_fin'])) ?>
@@ -283,91 +291,99 @@ $mesActual = date('m');
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Datos para los gráficos
-const citasPorMesData = <?= json_encode($citasPorMes ?? []) ?>;
-const citasPorEstadoData = <?= json_encode($citasPorEstado ?? []) ?>;
-const ingresosPorMesData = <?= json_encode($ingresosPorMes ?? []) ?>;
+  // Datos para los gráficos
+  const citasPorMesData = <?= json_encode($citasPorMes ?? []) ?>;
+  const citasPorEstadoData = <?= json_encode($citasPorEstado ?? []) ?>;
+  const ingresosPorMesData = <?= json_encode($ingresosPorMes ?? []) ?>;
 
-// Chart: Citas por Mes
-new Chart(document.getElementById('chartCitasPorMes'), {
-  type: 'bar',
-  data: {
-    labels: citasPorMesData.map(d => d.mes),
-    datasets: [{
-      label: 'Citas',
-      data: citasPorMesData.map(d => d.total),
-      backgroundColor: '#0d6efd',
-      borderRadius: 5
-    }]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+  // Chart: Citas por Mes
+  new Chart(document.getElementById('chartCitasPorMes'), {
+    type: 'bar',
+    data: {
+      labels: citasPorMesData.map(d => d.mes),
+      datasets: [{
+        label: 'Citas',
+        data: citasPorMesData.map(d => d.total),
+        backgroundColor: '#0d6efd',
+        borderRadius: 5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+    }
+  });
+
+  // Chart: Citas por Estado
+  new Chart(document.getElementById('chartCitasPorEstado'), {
+    type: 'doughnut',
+    data: {
+      labels: citasPorEstadoData.map(d => d.estado),
+      datasets: [{
+        data: citasPorEstadoData.map(d => d.total),
+        backgroundColor: ['#ffc107', '#198754', '#dc3545'],
+        borderWidth: 2,
+        borderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'right' } }
+    }
+  });
+
+  // Chart: Ingresos por Mes
+  new Chart(document.getElementById('chartIngresosPorMes'), {
+    type: 'line',
+    data: {
+      labels: ingresosPorMesData.map(d => d.mes),
+      datasets: [{
+        label: 'Ingresos ($)',
+        data: ingresosPorMesData.map(d => d.total),
+        borderColor: '#198754',
+        backgroundColor: 'rgba(25, 135, 84, 0.2)',
+        fill: true,
+        tension: 0.4,
+        borderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+
+  // Funciones de exportación (evitan duplicar el parámetro url y la doble '?')
+  const baseEstadisticasUrl = '<?= url('admin', 'estadisticas') ?>';
+
+  function buildExportUrl(tipo) {
+    const params = new URLSearchParams(window.location.search);
+    // Eliminamos parámetros que vamos a recomponer
+    params.delete('export');
+    // En modo fallback ya viene ?url=admin/estadisticas en baseEstadisticasUrl,
+    // así que si lo capturamos desde location.search lo quitamos para no duplicarlo
+    params.delete('url');
+    params.set('export', tipo);
+    const sep = baseEstadisticasUrl.includes('?') ? '&' : '?';
+    return baseEstadisticasUrl + sep + params.toString();
   }
-});
 
-// Chart: Citas por Estado
-new Chart(document.getElementById('chartCitasPorEstado'), {
-  type: 'doughnut',
-  data: {
-    labels: citasPorEstadoData.map(d => d.estado),
-    datasets: [{
-      data: citasPorEstadoData.map(d => d.total),
-      backgroundColor: ['#ffc107', '#198754', '#dc3545'],
-      borderWidth: 2,
-      borderColor: '#fff'
-    }]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { position: 'right' } }
+  function exportarPDFGraficas() {
+    window.open(buildExportUrl('pdf_graficas'), '_blank');
   }
-});
 
-// Chart: Ingresos por Mes
-new Chart(document.getElementById('chartIngresosPorMes'), {
-  type: 'line',
-  data: {
-    labels: ingresosPorMesData.map(d => d.mes),
-    datasets: [{
-      label: 'Ingresos ($)',
-      data: ingresosPorMesData.map(d => d.total),
-      borderColor: '#198754',
-      backgroundColor: 'rgba(25, 135, 84, 0.2)',
-      fill: true,
-      tension: 0.4,
-      borderWidth: 3
-    }]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true } }
+  function exportarPDFDatos() {
+    window.open(buildExportUrl('pdf_datos'), '_blank');
   }
-});
 
-// Funciones de exportación
-function exportarPDFGraficas() {
-  const params = new URLSearchParams(window.location.search);
-  params.set('export', 'pdf_graficas');
-  window.open('<?= url('admin','estadisticas') ?>?' + params.toString(), '_blank');
-}
-
-function exportarPDFDatos() {
-  const params = new URLSearchParams(window.location.search);
-  params.set('export', 'pdf_datos');
-  window.open('<?= url('admin','estadisticas') ?>?' + params.toString(), '_blank');
-}
-
-function exportarExcel() {
-  const params = new URLSearchParams(window.location.search);
-  params.set('export', 'excel');
-  window.location.href = '<?= url('admin','estadisticas') ?>?' + params.toString();
-}
+  function exportarExcel() {
+    window.location.href = buildExportUrl('excel');
+  }
 </script>
 
-<?php require __DIR__.'/../layout/footer.php'; ?>
+<?php require __DIR__ . '/../layout/footer.php'; ?>

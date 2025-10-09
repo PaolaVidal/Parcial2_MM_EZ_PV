@@ -2,53 +2,58 @@
 /**
  * Helper para generar archivos Excel (CSV + XLSX)
  */
-class ExcelHelper {
-    
+class ExcelHelper
+{
+
     /**
      * Exporta datos a un archivo CSV compatible con Excel
      * @param array $data Datos a exportar
      * @param string $filename Nombre del archivo sin extensión
      * @param array $headers Encabezados de las columnas
      */
-    public static function exportarCSV(array $data, string $filename, array $headers = []): void {
-        if (ob_get_level()) ob_end_clean();
-        
+    public static function exportarCSV(array $data, string $filename, array $headers = []): void
+    {
+        if (ob_get_level())
+            ob_end_clean();
+
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
         header('Pragma: no-cache');
         header('Expires: 0');
-        
+
         $output = fopen('php://output', 'w');
-        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-        
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
         if (!empty($headers)) {
             fputcsv($output, $headers, ';');
         }
-        
+
         foreach ($data as $row) {
             fputcsv($output, $row, ';');
         }
-        
+
         fclose($output);
         exit;
     }
-    
+
     /**
      * Exporta múltiples secciones a un CSV
      * @param array $sheets Array asociativo ['NombreHoja' => ['headers' => [...], 'data' => [...]]]
      * @param string $filename Nombre del archivo
      */
-    public static function exportarMultiplesSecciones(array $sheets, string $filename): void {
-        if (ob_get_level()) ob_end_clean();
-        
+    public static function exportarMultiplesSecciones(array $sheets, string $filename): void
+    {
+        if (ob_get_level())
+            ob_end_clean();
+
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
         header('Pragma: no-cache');
         header('Expires: 0');
-        
+
         $output = fopen('php://output', 'w');
-        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
-        
+        fprintf($output, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
         $firstSheet = true;
         foreach ($sheets as $sheetName => $sheetData) {
             if (!$firstSheet) {
@@ -56,21 +61,21 @@ class ExcelHelper {
                 fputcsv($output, [], ';');
             }
             $firstSheet = false;
-            
+
             fputcsv($output, [$sheetName], ';');
             fputcsv($output, [], ';');
-            
+
             if (!empty($sheetData['headers'])) {
                 fputcsv($output, $sheetData['headers'], ';');
             }
-            
+
             if (!empty($sheetData['data'])) {
                 foreach ($sheetData['data'] as $row) {
                     fputcsv($output, $row, ';');
                 }
             }
         }
-        
+
         fclose($output);
         exit;
     }
@@ -78,8 +83,53 @@ class ExcelHelper {
     /**
      * Exporta a Excel XLSX real usando XML directo (sin dependencias de Composer)
      */
-    public static function exportarMultiplesHojas(array $sheets, string $filename, string $title = ''): void {
-        // Generar Excel XLSX manualmente usando formato XML
+    public static function exportarMultiplesHojas(array $sheets, string $filename, string $title = ''): void
+    {
+        // Normalizar estructura recibida: AdminController envía [['titulo'=>..., 'data'=>[...]], ...]
+        // También soportamos formato asociativo ['NombreHoja'=>['headers'=>[], 'data'=>[]]]
+        $normalized = [];
+        foreach ($sheets as $key => $sheetSpec) {
+            if (is_array($sheetSpec) && isset($sheetSpec['titulo'])) {
+                $name = (string) $sheetSpec['titulo'];
+                $headers = $sheetSpec['headers'] ?? [];
+                $data = $sheetSpec['data'] ?? [];
+            } else {
+                // Clave como nombre, valor como data directa
+                $name = is_string($key) ? $key : ('HOJA_' . ($key + 1));
+                $headers = isset($sheetSpec['headers']) ? $sheetSpec['headers'] : [];
+                $data = isset($sheetSpec['data']) ? $sheetSpec['data'] : (is_array($sheetSpec) ? $sheetSpec : []);
+            }
+            $normalized[$name] = [
+                'headers' => $headers,
+                'data' => $data
+            ];
+        }
+        $sheets = $normalized;
+
+        // Fallback: si no existe ZipArchive (extensión php_zip no habilitada) exportamos un CSV multi-secciones
+        if (!class_exists('ZipArchive')) {
+            $multi = [];
+            foreach ($sheets as $name => $spec) {
+                $dataRows = $spec['data'] ?? [];
+                $headers = $spec['headers'] ?? [];
+                if (empty($headers) && !empty($dataRows)) {
+                    // Heurística: si la primera fila es textual, usarla como título separado, no como headers formales
+                    $first = $dataRows[0];
+                    $allStrings = is_array($first) && count($first) > 1 && count(array_filter($first, 'is_string')) === count($first);
+                    if ($allStrings) {
+                        // Mantener como fila de datos para no perder contexto
+                    }
+                }
+                $multi[$name] = [
+                    'headers' => $headers,
+                    'data' => $dataRows
+                ];
+            }
+            self::exportarMultiplesSecciones($multi, $filename . '_csv'); // realiza exit
+            return;
+        }
+
+        // Generar Excel XLSX manualmente usando formato XML (mínimo)
         $tmpDir = sys_get_temp_dir() . '/excel_' . uniqid();
         mkdir($tmpDir);
         mkdir($tmpDir . '/_rels');
@@ -87,7 +137,7 @@ class ExcelHelper {
         mkdir($tmpDir . '/xl');
         mkdir($tmpDir . '/xl/_rels');
         mkdir($tmpDir . '/xl/worksheets');
-        
+
         // [Content_Types].xml
         $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -96,17 +146,15 @@ class ExcelHelper {
     <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
     <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
     <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>';
-        
+
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
-            $contentTypes .= '
-    <Override PartName="/xl/worksheets/sheet' . $sheetIndex . '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+            $contentTypes .= '\n    <Override PartName="/xl/worksheets/sheet' . $sheetIndex . '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
             $sheetIndex++;
         }
-        $contentTypes .= '
-</Types>';
+        $contentTypes .= '\n</Types>';
         file_put_contents($tmpDir . '/[Content_Types].xml', $contentTypes);
-        
+
         // _rels/.rels
         $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -114,7 +162,7 @@ class ExcelHelper {
     <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
 </Relationships>';
         file_put_contents($tmpDir . '/_rels/.rels', $rels);
-        
+
         // docProps/core.xml
         $core = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -123,37 +171,28 @@ class ExcelHelper {
     <dcterms:created xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="dcterms:W3CDTF">' . date('Y-m-d\TH:i:s\Z') . '</dcterms:created>
 </cp:coreProperties>';
         file_put_contents($tmpDir . '/docProps/core.xml', $core);
-        
+
         // xl/workbook.xml
-        $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-    <sheets>';
+        $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">\n    <sheets>';
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
             $safeName = self::sanitizeSheetName($sheetName);
-            $workbook .= '
-        <sheet name="' . htmlspecialchars($safeName) . '" sheetId="' . $sheetIndex . '" r:id="rId' . $sheetIndex . '"/>';
+            $workbook .= '\n        <sheet name="' . htmlspecialchars($safeName) . '" sheetId="' . $sheetIndex . '" r:id="rId' . $sheetIndex . '"/>';
             $sheetIndex++;
         }
-        $workbook .= '
-    </sheets>
-</workbook>';
+        $workbook .= '\n    </sheets>\n</workbook>';
         file_put_contents($tmpDir . '/xl/workbook.xml', $workbook);
-        
+
         // xl/_rels/workbook.xml.rels
-        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
-            $workbookRels .= '
-    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' . $sheetIndex . '.xml"/>';
+            $workbookRels .= '\n    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' . $sheetIndex . '.xml"/>';
             $sheetIndex++;
         }
-        $workbookRels .= '
-    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>';
+        $workbookRels .= '\n    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n</Relationships>';
         file_put_contents($tmpDir . '/xl/_rels/workbook.xml.rels', $workbookRels);
-        
+
         // xl/styles.xml (con colores)
         $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -182,86 +221,82 @@ class ExcelHelper {
     </cellXfs>
 </styleSheet>';
         file_put_contents($tmpDir . '/xl/styles.xml', $styles);
-        
+
         // Generar cada hoja
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
-            $worksheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-    <sheetData>';
-            
+            $worksheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n    <sheetData>';
+
             $rowNum = 1;
-            
-            // Título
-            $colCount = count($sheetData['headers'] ?? [1]);
-            $lastCol = self::getColumnLetter($colCount);
-            $worksheet .= '
-        <row r="' . $rowNum . '">
-            <c r="A' . $rowNum . '" s="1" t="inlineStr"><is><t>' . htmlspecialchars($sheetName) . '</t></is></c>
-        </row>';
-            $rowNum += 2; // Saltar fila
-            
-            // Headers
+
+            // Determinar ancho aproximado por número de columnas (headers o primera fila de datos)
+            $colCount = 1;
             if (!empty($sheetData['headers'])) {
-                $worksheet .= '
-        <row r="' . $rowNum . '">';
+                $colCount = count($sheetData['headers']);
+            } elseif (!empty($sheetData['data']) && is_array($sheetData['data'][0])) {
+                $colCount = count($sheetData['data'][0]);
+            }
+
+            // Título hoja
+            $worksheet .= '\n        <row r="' . $rowNum . '">\n            <c r="A' . $rowNum . '" s="1" t="inlineStr"><is><t>' . htmlspecialchars($sheetName) . '</t></is></c>\n        </row>';
+            $rowNum += 2;
+
+            // Headers si existen
+            if (!empty($sheetData['headers'])) {
+                $worksheet .= '\n        <row r="' . $rowNum . '">';
                 $colIdx = 0;
                 foreach ($sheetData['headers'] as $header) {
                     $colLetter = self::getColumnLetter($colIdx + 1);
-                    $worksheet .= '
-            <c r="' . $colLetter . $rowNum . '" s="2" t="inlineStr"><is><t>' . htmlspecialchars($header) . '</t></is></c>';
+                    $worksheet .= '\n            <c r="' . $colLetter . $rowNum . '" s="2" t="inlineStr"><is><t>' . htmlspecialchars($header) . '</t></is></c>';
                     $colIdx++;
                 }
-                $worksheet .= '
-        </row>';
+                $worksheet .= '\n        </row>';
                 $rowNum++;
             }
-            
-            // Data
+
+            // Data filas
             if (!empty($sheetData['data'])) {
                 foreach ($sheetData['data'] as $dataRow) {
-                    $style = ($rowNum % 2 == 0) ? '4' : '3'; // Zebra striping
-                    $worksheet .= '
-        <row r="' . $rowNum . '">';
+                    $style = ($rowNum % 2 == 0) ? '4' : '3';
+                    $worksheet .= '\n        <row r="' . $rowNum . '">';
                     $colIdx = 0;
+                    if (!is_array($dataRow)) {
+                        $dataRow = [$dataRow];
+                    }
                     foreach ($dataRow as $cellValue) {
                         $colLetter = self::getColumnLetter($colIdx + 1);
-                        $cleanValue = htmlspecialchars(str_replace(['$', ','], '', $cellValue));
-                        if (is_numeric($cleanValue)) {
-                            $worksheet .= '
-            <c r="' . $colLetter . $rowNum . '" s="' . $style . '"><v>' . $cleanValue . '</v></c>';
+                        $raw = is_string($cellValue) ? $cellValue : (string) $cellValue;
+                        $cleanValue = str_replace(['$', ','], '', $raw);
+                        if ($cleanValue !== '' && is_numeric($cleanValue)) {
+                            $worksheet .= '\n            <c r="' . $colLetter . $rowNum . '" s="' . $style . '"><v>' . htmlspecialchars($cleanValue) . '</v></c>';
                         } else {
-                            $worksheet .= '
-            <c r="' . $colLetter . $rowNum . '" s="' . $style . '" t="inlineStr"><is><t>' . htmlspecialchars($cellValue) . '</t></is></c>';
+                            $worksheet .= '\n            <c r="' . $colLetter . $rowNum . '" s="' . $style . '" t="inlineStr"><is><t>' . htmlspecialchars($raw) . '</t></is></c>';
                         }
                         $colIdx++;
                     }
-                    $worksheet .= '
-        </row>';
+                    $worksheet .= '\n        </row>';
                     $rowNum++;
                 }
             }
-            
-            $worksheet .= '
-    </sheetData>
-</worksheet>';
+
+            $worksheet .= '\n    </sheetData>\n</worksheet>';
             file_put_contents($tmpDir . '/xl/worksheets/sheet' . $sheetIndex . '.xml', $worksheet);
             $sheetIndex++;
         }
-        
+
         // Crear ZIP
         $zipFile = $tmpDir . '.xlsx';
         $zip = new ZipArchive();
         if ($zip->open($zipFile, ZipArchive::CREATE) !== TRUE) {
             throw new Exception('No se pudo crear el archivo Excel');
         }
-        
+
         // Agregar todos los archivos al ZIP
         $files = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($tmpDir),
             RecursiveIteratorIterator::LEAVES_ONLY
         );
-        
+
         foreach ($files as $file) {
             if (!$file->isDir()) {
                 $filePath = $file->getRealPath();
@@ -269,16 +304,17 @@ class ExcelHelper {
                 $zip->addFile($filePath, $relativePath);
             }
         }
-        
+
         $zip->close();
-        
+
         // Enviar archivo
-        if (ob_get_level()) ob_end_clean();
+        if (ob_get_level())
+            ob_end_clean();
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . $filename . '.xlsx"');
         header('Content-Length: ' . filesize($zipFile));
         readfile($zipFile);
-        
+
         // Limpiar temporales
         unlink($zipFile);
         array_map('unlink', glob($tmpDir . '/**/*.xml'));
@@ -290,21 +326,23 @@ class ExcelHelper {
         rmdir($tmpDir . '/docProps');
         rmdir($tmpDir . '/_rels');
         rmdir($tmpDir);
-        
+
         exit;
     }
-    
-    private static function sanitizeSheetName(string $name): string {
+
+    private static function sanitizeSheetName(string $name): string
+    {
         $name = str_replace([':', '\\', '/', '?', '*', '[', ']'], '_', $name);
         return mb_substr($name, 0, 31);
     }
-    
-    private static function getColumnLetter(int $num): string {
+
+    private static function getColumnLetter(int $num): string
+    {
         $letters = '';
         while ($num > 0) {
             $mod = ($num - 1) % 26;
             $letters = chr(65 + $mod) . $letters;
-            $num = (int)(($num - $mod) / 26);
+            $num = (int) (($num - $mod) / 26);
         }
         return $letters ?: 'A';
     }
