@@ -138,6 +138,23 @@ if (isset($_GET['url'])) {
         }
     }
 
+    // Exportaciones del panel del paciente (historial / gráfica) antes del layout
+    if ($paginaEarly === 'public' && $accionEarly === 'panel' && isset($_GET['export'])) {
+        $filePublic = $contenido->obtenerContenido('public');
+        if ($filePublic) {
+            require_once $filePublic;
+            if (class_exists('PublicController')) {
+                // Limpiar buffers previos para evitar "headers already sent"
+                while (ob_get_level()) {
+                    @ob_end_clean();
+                }
+                $ctrl = new PublicController();
+                $ctrl->panel(); // internamente detecta export y genera salida (exit implícito en helpers)
+                exit;
+            }
+        }
+    }
+
     $rawEndpoints = [
         // Endpoints que deben devolver JSON o respuesta sin envolver en layout
         'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar'],
