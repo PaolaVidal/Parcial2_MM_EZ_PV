@@ -101,10 +101,44 @@ class PsicologoController extends BaseController
     {
         $this->requirePsicologo();
         $idPsico = $this->currentPsicologoId();
+        // Capturamos posible rango antes de export para que se transmita en query
+        $inicioParam = $_GET['inicio'] ?? '';
+        $finParam = $_GET['fin'] ?? '';
         // Export dispatch: soportar export=pdf_graficas | pdf_datos | excel
-        if(isset($_GET['export'])){
+        if (isset($_GET['export'])) {
             $this->exportarEstadisticas($_GET['export'], $idPsico);
             return;
+        }
+
+        // Parámetros de rango opcionales ?inicio=YYYY-mm-dd&fin=YYYY-mm-dd
+        $inicio = $_GET['inicio'] ?? '';
+        $fin = $_GET['fin'] ?? '';
+        $rangoValido = false;
+        $citasRango = [];
+        $pacientesUnicosRango = 0;
+        $serieRango = [];
+        if ($inicio && $fin) {
+            // Validación básica formato y orden
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $inicio) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fin) && $inicio <= $fin) {
+                $rangoValido = true;
+                $db = (new Cita())->pdo();
+                // Citas del psicólogo en el rango
+                $st = $db->prepare("SELECT c.id, c.fecha_hora, c.estado_cita, p.nombre paciente
+                                     FROM Cita c
+                                     LEFT JOIN Paciente p ON p.id = c.id_paciente
+                                     WHERE c.id_psicologo=? AND DATE(c.fecha_hora) BETWEEN ? AND ?
+                                     ORDER BY c.fecha_hora");
+                $st->execute([$idPsico, $inicio, $fin]);
+                $citasRango = $st->fetchAll(PDO::FETCH_ASSOC);
+                // Pacientes únicos en el rango
+                $st2 = $db->prepare("SELECT COUNT(DISTINCT c.id_paciente) FROM Cita c WHERE c.id_psicologo=? AND DATE(c.fecha_hora) BETWEEN ? AND ?");
+                $st2->execute([$idPsico, $inicio, $fin]);
+                $pacientesUnicosRango = (int) $st2->fetchColumn();
+                // Serie diaria para gráfico (citas por día)
+                $st3 = $db->prepare("SELECT DATE(c.fecha_hora) dia, COUNT(*) total FROM Cita c WHERE c.id_psicologo=? AND DATE(c.fecha_hora) BETWEEN ? AND ? GROUP BY dia ORDER BY dia");
+                $st3->execute([$idPsico, $inicio, $fin]);
+                $serieRango = $st3->fetchAll(PDO::FETCH_ASSOC);
+            }
         }
 
         // Datos para gráficos
@@ -131,61 +165,136 @@ class PsicologoController extends BaseController
             'promedioIngresoDiario' => $promedioIngresoDiario,
             'totalCitas' => $totalCitas,
             'totalPacientes' => $totalPacientes,
-            'ingresoTotal' => $ingresoTotal
+            'ingresoTotal' => $ingresoTotal,
+            // Rango
+            'rangoInicio' => $inicio,
+            'rangoFin' => $fin,
+            'rangoValido' => $rangoValido,
+            'pacientesUnicosRango' => $pacientesUnicosRango,
+            'serieRango' => $serieRango
         ]);
     }
 
-        /**
-         * Exportar estadísticas para psicólogo: pdf_graficas, pdf_datos, excel
-         */
-        private function exportarEstadisticas(string $formato, int $idPsico): void {
-                $formato = (string)$formato;
-                // Excel branch - reuse existing exporter
-                if($formato === 'excel'){
-                        $this->exportarEstadisticasExcel();
-                        return;
-                }
+    /**
+     * Exportar estadísticas para psicólogo: pdf_graficas, pdf_datos, excel
+     */
+    private function exportarEstadisticas(string $formato, int $idPsico): void
+    {
+        $formato = (string) $formato;
+        $inicio = $_GET['inicio'] ?? '';
+        $fin = $_GET['fin'] ?? '';
+        $rangoOk = false;
+        if ($inicio && $fin && preg_match('/^\d{4}-\d{2}-\d{2}$/', $inicio) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fin) && $inicio <= $fin) {
+            $rangoOk = true;
+        }
+        // Excel branch - reuse existing exporter
+        if ($formato === 'excel') {
+            $this->exportarEstadisticasExcel();
+            return;
+        }
+        if ($formato === 'excel_rango') {
+            if (!$rangoOk) {
+                header('Content-Type: text/plain; charset=utf-8');
+                echo "Rango inválido";
+                return;
+            }
+            require_once __DIR__ . '/../helpers/ExcelHelper.php';
+            $db = (new Cita())->pdo();
+            // Pacientes únicos y serie diaria
+            $stSerie = $db->prepare("SELECT DATE(fecha_hora) dia, COUNT(*) total FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora) BETWEEN ? AND ? GROUP BY dia ORDER BY dia");
+            $stSerie->execute([$idPsico, $inicio, $fin]);
+            $serie = $stSerie->fetchAll(PDO::FETCH_ASSOC);
+            $stPac = $db->prepare("SELECT COUNT(DISTINCT id_paciente) FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora) BETWEEN ? AND ?");
+            $stPac->execute([$idPsico, $inicio, $fin]);
+            $pacUnicos = (int) $stPac->fetchColumn();
+            $stDet = $db->prepare("SELECT c.id, c.fecha_hora, c.estado_cita, COALESCE(p.nombre,'') nombre FROM Cita c LEFT JOIN Paciente p ON p.id=c.id_paciente WHERE c.id_psicologo=? AND DATE(c.fecha_hora) BETWEEN ? AND ? ORDER BY c.fecha_hora");
+            $stDet->execute([$idPsico, $inicio, $fin]);
+            $detalle = $stDet->fetchAll(PDO::FETCH_ASSOC);
+            $sheets = [];
+            $sheets['RESUMEN RANGO'] = [
+                'headers' => ['Fecha Inicio', 'Fecha Fin', 'Pacientes Únicos', 'Total Citas'],
+                'data' => [[$inicio, $fin, $pacUnicos, array_sum(array_map(fn($r) => (int) $r['total'], $serie))]]
+            ];
+            $sheets['CITAS POR DÍA'] = [
+                'headers' => ['Día', 'Total Citas'],
+                'data' => array_map(fn($r) => [$r['dia'], $r['total']], $serie)
+            ];
+            $sheets['DETALLE CITAS'] = [
+                'headers' => ['ID', 'Fecha/Hora', 'Paciente', 'Estado'],
+                'data' => array_map(function ($c) {
+                    return [$c['id'], $c['fecha_hora'], $c['nombre'], $c['estado_cita']]; }, $detalle)
+            ];
+            $filename = 'Rango_Psicologo_' . $inicio . '_a_' . $fin . '_' . date('Ymd_His');
+            ExcelHelper::exportarMultiplesHojas($sheets, $filename, 'Rango de Fechas');
+            return;
+        }
 
-                // For PDFs we need ChartHelper and PDFHelper
-                require_once __DIR__ . '/../helpers/PDFHelper.php';
-                require_once __DIR__ . '/../helpers/ChartHelper.php';
+        // For PDFs we need ChartHelper and PDFHelper
+        require_once __DIR__ . '/../helpers/PDFHelper.php';
+        require_once __DIR__ . '/../helpers/ChartHelper.php';
 
-                // Collect same datasets used by the view
-                $citasPorMes = $this->citasPorMes($idPsico, 12);
-                $citasPorEstado = $this->citasPorEstado($idPsico);
-                $ingresosPorMes = $this->ingresosPorMes($idPsico, 12);
-                $pacientesFrecuentes = $this->pacientesMasFrecuentes($idPsico, 10);
-                $horariosPopulares = $this->horariosPopulares($idPsico);
-                $tasaCancelacion = $this->tasaCancelacion($idPsico);
-                $promedioIngresoDiario = $this->promedioIngresoDiario($idPsico);
-                $totalCitas = $this->countCitasTotal($idPsico);
-                $totalPacientes = $this->contarPacientesUnicos($idPsico);
-                $ingresoTotal = $this->ingresosPsicologo($idPsico);
+        if ($formato === 'pdf_rango') {
+            if (!$rangoOk) {
+                $html = '<html><body><h3>Rango inválido</h3><p>Debe proporcionar parámetros inicio y fin válidos.</p></body></html>';
+                PDFHelper::generarPDF($html, 'Rango_Invalido', 'portrait', 'letter', true);
+                return;
+            }
+            $db = (new Cita())->pdo();
+            $stSerie = $db->prepare("SELECT DATE(fecha_hora) dia, COUNT(*) total FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora) BETWEEN ? AND ? GROUP BY dia ORDER BY dia");
+            $stSerie->execute([$idPsico, $inicio, $fin]);
+            $serie = $stSerie->fetchAll(PDO::FETCH_ASSOC);
+            $labels = array_column($serie, 'dia');
+            $datos = array_map(fn($r) => (int) $r['total'], $serie);
+            $chart = count($datos) >= 2 ? ChartHelper::generarLineChart($datos, $labels, 'Citas por Día', 700, 300) : ChartHelper::generarBarChart($datos, $labels, 'Citas por Día', 700, 300);
+            $stPac = $db->prepare("SELECT COUNT(DISTINCT id_paciente) FROM Cita WHERE id_psicologo=? AND DATE(fecha_hora) BETWEEN ? AND ?");
+            $stPac->execute([$idPsico, $inicio, $fin]);
+            $pacUnicos = (int) $stPac->fetchColumn();
+            $totalCitasRango = array_sum($datos);
+            $generado = date('d/m/Y H:i:s');
+            $html = "<!doctype html><html><head><meta charset='utf-8'><style>body{font-family:DejaVu Sans,Arial,sans-serif;font-size:11px;margin:18px}h1{margin:0 0 10px}table{border-collapse:collapse;width:100%;margin-top:12px}th,td{border:1px solid #ccc;padding:6px;font-size:10px}</style></head><body><h1>Reporte de Rango de Fechas</h1><div><strong>Rango:</strong> $inicio a $fin<br><strong>Generado:</strong> $generado</div><div style='margin:12px 0'><strong>Pacientes Únicos:</strong> $pacUnicos &nbsp; | &nbsp; <strong>Total Citas:</strong> $totalCitasRango</div><div style='text-align:center;margin-bottom:15px'><img src='$chart' style='width:100%;max-width:700px'></div></body></html>";
+            PDFHelper::generarPDF($html, 'Rango_' . $inicio . '_a_' . $fin . '_' . date('Ymd'), 'portrait', 'letter', true);
+            return;
+        }
 
-                // Psicólogo info
-                $psico = new Psicologo();
-                $dataPsico = $psico->get($idPsico);
-                $nombrePsico = $dataPsico['nombre'] ?? 'Psicólogo';
+        // Collect same datasets used by the view
+        $citasPorMes = $this->citasPorMes($idPsico, 12);
+        $citasPorEstado = $this->citasPorEstado($idPsico);
+        $ingresosPorMes = $this->ingresosPorMes($idPsico, 12);
+        $pacientesFrecuentes = $this->pacientesMasFrecuentes($idPsico, 10);
+        $horariosPopulares = $this->horariosPopulares($idPsico);
+        $tasaCancelacion = $this->tasaCancelacion($idPsico);
+        $promedioIngresoDiario = $this->promedioIngresoDiario($idPsico);
+        $totalCitas = $this->countCitasTotal($idPsico);
+        $totalPacientes = $this->contarPacientesUnicos($idPsico);
+        $ingresoTotal = $this->ingresosPsicologo($idPsico);
 
-                // Prepare charts
-                $mesesLabels = array_column($citasPorMes, 'mes');
-                $mesesData = array_map('intval', array_column($citasPorMes, 'total'));
-                $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes (Ultimos 12 meses)', 700, 300);
+        // Psicólogo info
+        $psico = new Psicologo();
+        $dataPsico = $psico->get($idPsico);
+        $nombrePsico = $dataPsico['nombre'] ?? 'Psicólogo';
 
-                $estadosLabels = [];
-                $estadosData = [];
-                foreach($citasPorEstado as $est) { $estadosLabels[] = ucfirst($est['estado_cita']); $estadosData[] = (int)$est['total']; }
-                $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Distribucion de Citas por Estado', 600, 350);
+        // Prepare charts
+        $mesesLabels = array_column($citasPorMes, 'mes');
+        $mesesData = array_map('intval', array_column($citasPorMes, 'total'));
+        $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes (Ultimos 12 meses)', 700, 300);
 
-                $ingresosLabels = array_column($ingresosPorMes, 'mes');
-                $ingresosData = array_map('floatval', array_column($ingresosPorMes, 'total'));
-                $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos Mensuales', 700, 300);
+        $estadosLabels = [];
+        $estadosData = [];
+        foreach ($citasPorEstado as $est) {
+            $estadosLabels[] = ucfirst($est['estado_cita']);
+            $estadosData[] = (int) $est['total'];
+        }
+        $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Distribucion de Citas por Estado', 600, 350);
 
-                // pdf_graficas -> header + charts + footer
-                if($formato === 'pdf_graficas'){
-                        $periodoStr = date('Y');
-                        $generado = date('d/m/Y H:i:s');
-                        $html = <<<HTML
+        $ingresosLabels = array_column($ingresosPorMes, 'mes');
+        $ingresosData = array_map('floatval', array_column($ingresosPorMes, 'total'));
+        $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos Mensuales', 700, 300);
+
+        // pdf_graficas -> header + charts + footer
+        if ($formato === 'pdf_graficas') {
+            $periodoStr = date('Y');
+            $generado = date('d/m/Y H:i:s');
+            $html = <<<HTML
 <!doctype html>
 <html>
 <head>
@@ -201,51 +310,51 @@ class PsicologoController extends BaseController
 </body>
 </html>
 HTML;
-                        PDFHelper::generarPDF($html, 'Graficas_Psicologo_' . preg_replace('/[^A-Za-z0-9_]/','_',$nombrePsico) . '_' . date('Ymd'), 'landscape', 'letter', true);
-                        return;
-                }
+            PDFHelper::generarPDF($html, 'Graficas_Psicologo_' . preg_replace('/[^A-Za-z0-9_]/', '_', $nombrePsico) . '_' . date('Ymd'), 'landscape', 'letter', true);
+            return;
+        }
 
-                        // pdf_datos -> resumen ampliado con secciones: Resumen Ejecutivo, Citas por Estado, Horarios Populares, Top Pacientes
-                        if($formato === 'pdf_datos'){
-                                // build rows for pacientesFrecuentes
-                                $rows = '';
-                                $pos = 1;
-                                foreach($pacientesFrecuentes as $p){
-                                        $nombre = $p['nombre'] ?: ('Paciente #' . ($p['id_paciente'] ?? ''));
-                                        $rows .= '<tr>'
-                                                . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . $pos++ . '</td>'
-                                                . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8') . '</td>'
-                                                . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . ((int)$p['total_citas']) . '</td>'
-                                                . '</tr>';
-                                }
+        // pdf_datos -> resumen ampliado con secciones: Resumen Ejecutivo, Citas por Estado, Horarios Populares, Top Pacientes
+        if ($formato === 'pdf_datos') {
+            // build rows for pacientesFrecuentes
+            $rows = '';
+            $pos = 1;
+            foreach ($pacientesFrecuentes as $p) {
+                $nombre = $p['nombre'] ?: ('Paciente #' . ($p['id_paciente'] ?? ''));
+                $rows .= '<tr>'
+                    . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . $pos++ . '</td>'
+                    . '<td style="padding:6px;border:1px solid #ddd">' . htmlspecialchars($nombre, ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td style="padding:6px;border:1px solid #ddd;text-align:center">' . ((int) $p['total_citas']) . '</td>'
+                    . '</tr>';
+            }
 
-                                // Citas por Estado rows
-                                $rowsEstado = '';
-                                foreach($citasPorEstado as $e){
-                                        $label = htmlspecialchars(ucfirst($e['estado_cita']), ENT_QUOTES, 'UTF-8');
-                                        $rowsEstado .= '<tr>'
-                                                . '<td style="padding:6px;border:1px solid #ddd">' . $label . '</td>'
-                                                . '<td style="padding:6px;border:1px solid #ddd;text-align:right">' . ((int)$e['total']) . '</td>'
-                                                . '</tr>';
-                                }
+            // Citas por Estado rows
+            $rowsEstado = '';
+            foreach ($citasPorEstado as $e) {
+                $label = htmlspecialchars(ucfirst($e['estado_cita']), ENT_QUOTES, 'UTF-8');
+                $rowsEstado .= '<tr>'
+                    . '<td style="padding:6px;border:1px solid #ddd">' . $label . '</td>'
+                    . '<td style="padding:6px;border:1px solid #ddd;text-align:right">' . ((int) $e['total']) . '</td>'
+                    . '</tr>';
+            }
 
-                                // Horarios Populares rows
-                                $rowsHorarios = '';
-                                foreach($horariosPopulares as $h){
-                                        $hora = htmlspecialchars($h['hora'] ?? $h['turno'] ?? '', ENT_QUOTES, 'UTF-8');
-                                        $rowsHorarios .= '<tr>'
-                                                . '<td style="padding:6px;border:1px solid #ddd">' . $hora . '</td>'
-                                                . '<td style="padding:6px;border:1px solid #ddd;text-align:right">' . ((int)$h['total']) . '</td>'
-                                                . '</tr>';
-                                }
+            // Horarios Populares rows
+            $rowsHorarios = '';
+            foreach ($horariosPopulares as $h) {
+                $hora = htmlspecialchars($h['hora'] ?? $h['turno'] ?? '', ENT_QUOTES, 'UTF-8');
+                $rowsHorarios .= '<tr>'
+                    . '<td style="padding:6px;border:1px solid #ddd">' . $hora . '</td>'
+                    . '<td style="padding:6px;border:1px solid #ddd;text-align:right">' . ((int) $h['total']) . '</td>'
+                    . '</tr>';
+            }
 
-                                $periodoStr = date('Y');
-                                $generado = date('d/m/Y H:i:s');
-                                $ingresoFmt = '$' . number_format($ingresoTotal,2);
-                                $tasaCancel = is_numeric($tasaCancelacion) ? round($tasaCancelacion,2) . '%' : 'N/A';
-                                $promIngreso = is_numeric($promedioIngresoDiario) ? '$' . number_format($promedioIngresoDiario,2) : 'N/A';
+            $periodoStr = date('Y');
+            $generado = date('d/m/Y H:i:s');
+            $ingresoFmt = '$' . number_format($ingresoTotal, 2);
+            $tasaCancel = is_numeric($tasaCancelacion) ? round($tasaCancelacion, 2) . '%' : 'N/A';
+            $promIngreso = is_numeric($promedioIngresoDiario) ? '$' . number_format($promedioIngresoDiario, 2) : 'N/A';
 
-                                $html = <<<HTML
+            $html = <<<HTML
         <!doctype html>
         <html>
         <head>
@@ -297,13 +406,13 @@ HTML;
         </body>
         </html>
         HTML;
-                                PDFHelper::generarPDF($html, 'Datos_Psicologo_' . preg_replace('/[^A-Za-z0-9_]/','_',$nombrePsico) . '_' . date('Ymd'), 'portrait', 'letter', true);
-                                return;
-                        }
-
-                // Fallback: generate the full professional PDF (existing implementation)
-                $this->exportarEstadisticasPDF();
+            PDFHelper::generarPDF($html, 'Datos_Psicologo_' . preg_replace('/[^A-Za-z0-9_]/', '_', $nombrePsico) . '_' . date('Ymd'), 'portrait', 'letter', true);
+            return;
         }
+
+        // Fallback: generate the full professional PDF (existing implementation)
+        $this->exportarEstadisticasPDF();
+    }
 
     private function countEstadoDia(int $idPsico, string $estado, string $fecha): int
     {
@@ -1310,29 +1419,29 @@ HTML;
     </table>
     
     <div class="page-break"></div>';
-    
-    // ===== GENERAR GRAFICAS CON CHARTHELPER =====
-    
-    // 1. Citas por mes (gráfico de barras)
-    $mesesLabels = array_column($citasPorMes, 'mes');
-    $mesesData = array_map('intval', array_column($citasPorMes, 'total'));
-    $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes (Ultimos 12 meses)', 700, 300);
-    
-    // 2. Citas por estado (gráfico de pie)
-    $estadosLabels = [];
-    $estadosData = [];
-    foreach($citasPorEstado as $est) {
-        $estadosLabels[] = ucfirst($est['estado_cita']);
-        $estadosData[] = (int)$est['total'];
-    }
-    $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Distribucion de Citas por Estado', 600, 350);
-    
-    // 3. Ingresos por mes (gráfico de líneas)
-    $ingresosLabels = array_column($ingresosPorMes, 'mes');
-    $ingresosData = array_map('floatval', array_column($ingresosPorMes, 'total'));
-    $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos Mensuales', 700, 300);
-    
-    $html .= '
+
+        // ===== GENERAR GRAFICAS CON CHARTHELPER =====
+
+        // 1. Citas por mes (gráfico de barras)
+        $mesesLabels = array_column($citasPorMes, 'mes');
+        $mesesData = array_map('intval', array_column($citasPorMes, 'total'));
+        $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes (Ultimos 12 meses)', 700, 300);
+
+        // 2. Citas por estado (gráfico de pie)
+        $estadosLabels = [];
+        $estadosData = [];
+        foreach ($citasPorEstado as $est) {
+            $estadosLabels[] = ucfirst($est['estado_cita']);
+            $estadosData[] = (int) $est['total'];
+        }
+        $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Distribucion de Citas por Estado', 600, 350);
+
+        // 3. Ingresos por mes (gráfico de líneas)
+        $ingresosLabels = array_column($ingresosPorMes, 'mes');
+        $ingresosData = array_map('floatval', array_column($ingresosPorMes, 'total'));
+        $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos Mensuales', 700, 300);
+
+        $html .= '
     <h2>Graficas Estadisticas</h2>
     <div style="text-align: center; margin-bottom: 20px;">
         <img src="' . $chartCitasMes . '" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
