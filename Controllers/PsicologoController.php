@@ -176,11 +176,98 @@ class PsicologoController extends BaseController
     }
 
     /**
+     * Permite al psicólogo buscar y consultar el historial clínico, citas y evaluaciones
+     * de cualquier paciente (sin importar si el psicólogo lo atendió o no).
+     * URL ejemplo: ?url=psicologo/consultarPaciente&id=123 o ?url=psicologo/consultarPaciente&q=nombre
+     */
+    public function consultarPaciente(): void
+    {
+        $this->requirePsicologo();
+        $q = trim($_GET['q'] ?? '');
+        $id = isset($_GET['id']) && ctype_digit((string) $_GET['id']) ? (int) $_GET['id'] : 0;
+
+        $paciente = null;
+        $resultados = [];
+        $citas = [];
+
+        $pacModel = new Paciente();
+        $citaModel = new Cita();
+        $evalModel = new Evaluacion();
+
+        // Si se busca por id directo
+        if ($id > 0) {
+            $paciente = $pacModel->getById($id);
+        }
+
+        // Si viene q (nombre o dui) buscar coincidencias
+        if ($q !== '') {
+            $db = $pacModel->pdo();
+            $like = '%' . str_replace(' ', '%', $q) . '%';
+            $st = $db->prepare("SELECT id, nombre, dui, email FROM Paciente WHERE (nombre LIKE ? OR IFNULL(dui,'') LIKE ?) ORDER BY nombre LIMIT 100");
+            $st->execute([$like, $like]);
+            $resultados = $st->fetchAll(PDO::FETCH_ASSOC);
+            // Si solo hay una coincidencia y no se proporcionó id, seleccionarla
+            if (!$paciente && count($resultados) === 1) {
+                $paciente = $pacModel->getById((int) $resultados[0]['id']);
+            }
+        }
+
+        if ($paciente) {
+            // Obtener historial y citas; listarPacienteTodos devuelve psicologo_nombre y especialidad si están
+            $historialClinico = $paciente['historial_clinico'] ?? $paciente['historial'] ?? '';
+
+            // Filtros opcionales recibidos por GET
+            $estadoFiltro = trim($_GET['estado'] ?? 'all'); // all|pendiente|realizada|cancelada
+            $inicioFiltro = trim($_GET['inicio'] ?? '');
+            $finFiltro = trim($_GET['fin'] ?? '');
+
+            $citasTodas = $citaModel->listarPacienteTodos((int) $paciente['id']);
+            $citas = [];
+
+            // Validar rango
+            $rangoValido = false;
+            if ($inicioFiltro && $finFiltro && preg_match('/^\d{4}-\d{2}-\d{2}$/', $inicioFiltro) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $finFiltro) && $inicioFiltro <= $finFiltro) {
+                $rangoValido = true;
+            }
+
+            foreach ($citasTodas as $c) {
+                $estadoC = $c['estado_cita'] ?? $c['estado'] ?? '';
+                // Filtrar por estado si se especificó
+                if ($estadoFiltro !== 'all' && $estadoFiltro !== '' && $estadoC !== $estadoFiltro)
+                    continue;
+                // Filtrar por rango si es válido
+                if ($rangoValido) {
+                    $dia = substr($c['fecha_hora'], 0, 10);
+                    if ($dia < $inicioFiltro || $dia > $finFiltro)
+                        continue;
+                }
+                // Adjuntar evaluaciones
+                $c['evaluaciones'] = $evalModel->obtenerPorCita((int) $c['id']);
+                $citas[] = $c;
+            }
+        } else {
+            $historialClinico = '';
+        }
+
+        $this->render('psicologo/consultas_paciente', [
+            'q' => $q,
+            'resultados' => $resultados,
+            'paciente' => $paciente,
+            'historialClinico' => $historialClinico,
+            'citas' => $citas,
+            'estadoFiltro' => $estadoFiltro ?? 'all',
+            'inicioFiltro' => $inicioFiltro ?? '',
+            'finFiltro' => $finFiltro ?? ''
+        ]);
+    }
+
+    /**
      * Exportar estadísticas para psicólogo: pdf_graficas, pdf_datos, excel
      */
     private function exportarEstadisticas(string $formato, int $idPsico): void
     {
         $formato = (string) $formato;
+        // Parámetros de rango opcionales (cuando se exporta por rango)
         $inicio = $_GET['inicio'] ?? '';
         $fin = $_GET['fin'] ?? '';
         $rangoOk = false;
@@ -222,7 +309,8 @@ class PsicologoController extends BaseController
             $sheets['DETALLE CITAS'] = [
                 'headers' => ['ID', 'Fecha/Hora', 'Paciente', 'Estado'],
                 'data' => array_map(function ($c) {
-                    return [$c['id'], $c['fecha_hora'], $c['nombre'], $c['estado_cita']]; }, $detalle)
+                    return [$c['id'], $c['fecha_hora'], $c['nombre'], $c['estado_cita']];
+                }, $detalle)
             ];
             $filename = 'Rango_Psicologo_' . $inicio . '_a_' . $fin . '_' . date('Ymd_His');
             ExcelHelper::exportarMultiplesHojas($sheets, $filename, 'Rango de Fechas');
@@ -716,6 +804,10 @@ HTML;
     public function guardarEvaluacion(): void
     {
         $this->requirePsicologo();
+        // Asegurar que no haya salida previa que contamine el JSON
+        if (ob_get_length()) {
+            @ob_end_clean();
+        }
         header('Content-Type: application/json');
 
         $idCita = (int) ($_POST['id_cita'] ?? 0);
@@ -728,17 +820,17 @@ HTML;
 
         if (!$cita || (int) $cita['id_psicologo'] !== $idPsico) {
             echo json_encode(['ok' => false, 'msg' => 'Cita no válida']);
-            return;
+            exit;
         }
 
         if (in_array($cita['estado_cita'], ['realizada', 'cancelada'])) {
             echo json_encode(['ok' => false, 'msg' => 'No se puede agregar evaluaciones a citas finalizadas']);
-            return;
+            exit;
         }
 
         if ($estadoEmocional < 1 || $estadoEmocional > 10) {
             echo json_encode(['ok' => false, 'msg' => 'Estado emocional debe estar entre 1 y 10']);
-            return;
+            exit;
         }
 
         $evalM = new Evaluacion();
@@ -764,12 +856,15 @@ HTML;
                     'evaluacion' => $evaluacion,
                     'total' => $totalEval
                 ]);
+                exit;
             } else {
                 echo json_encode(['ok' => false, 'msg' => 'Error al guardar evaluación']);
+                exit;
             }
         } catch (Exception $e) {
             error_log('Error en guardarEvaluacion: ' . $e->getMessage());
             echo json_encode(['ok' => false, 'msg' => 'Error: ' . $e->getMessage()]);
+            exit;
         }
     }
 

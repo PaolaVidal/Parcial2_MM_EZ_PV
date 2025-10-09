@@ -157,7 +157,7 @@ if (isset($_GET['url'])) {
 
     $rawEndpoints = [
         // Endpoints que deben devolver JSON o respuesta sin envolver en layout
-        'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar'],
+        'psicologo' => ['slots', 'scanProcesar', 'scanConsultar', 'scanConfirmar', 'guardarEvaluacion'],
         'ticket' => ['qr', 'pdf', 'consultarPago'],
         // Procesos administrativos que solo hacen POST + redirect (evita pantalla en blanco)
         'admin' => ['procesarSolicitud'],
@@ -305,6 +305,10 @@ if (empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))) {
                                         class="nav-link <?= isAct($seg0, $seg1, 'psicologo', 'estadisticas') ? 'active fw-semibold' : '' ?>"
                                         href="<?= url('psicologo', 'estadisticas') ?>"><i
                                             class="fas fa-chart-bar me-1"></i>Estadísticas</a></li>
+                                <li class="nav-item"><a
+                                        class="nav-link <?= isAct($seg0, $seg1, 'psicologo', 'consultarPaciente') ? 'active fw-semibold' : '' ?>"
+                                        href="<?= url('psicologo', 'consultarPaciente') ?>"><i
+                                            class="fas fa-search me-1"></i>Consultas Pacientes</a></li>
                                 <li class="nav-item"><a
                                         class="nav-link <?= isAct($seg0, $seg1, 'psicologo', 'citas') ? 'active fw-semibold' : '' ?>"
                                         href="<?= url('psicologo', 'citas') ?>"><i class="fas fa-list me-1"></i>Citas</a></li>

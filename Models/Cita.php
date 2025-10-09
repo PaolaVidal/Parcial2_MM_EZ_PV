@@ -118,6 +118,25 @@ class Cita extends BaseModel
         return $st->fetchAll();
     }
 
+    /**
+     * Listar todas las citas de un paciente (incluye realizadas/canceladas) - útil para historial clínico
+     */
+    public function listarPacienteTodos(int $idPaciente): array
+    {
+        $sql = "SELECT c.*, 
+                       u.nombre AS psicologo_nombre,
+                       e.nombre AS psicologo_especialidad
+                FROM Cita c
+                LEFT JOIN Psicologo p ON c.id_psicologo = p.id
+                LEFT JOIN Usuario u ON p.id_usuario = u.id
+                LEFT JOIN Especialidad e ON e.id = p.id_especialidad
+                WHERE c.id_paciente = ?
+                ORDER BY c.fecha_hora DESC";
+        $st = $this->db->prepare($sql);
+        $st->execute([$idPaciente]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public function listarPsicologoPendientes(int $idPsico): array
     {
         $st = $this->db->prepare("SELECT * FROM Cita WHERE id_psicologo=? AND estado_cita='pendiente' AND estado='activo' ORDER BY fecha_hora ASC");
