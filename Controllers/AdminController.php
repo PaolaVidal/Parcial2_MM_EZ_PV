@@ -775,6 +775,7 @@ class AdminController {
     private function exportarEstadisticas(string $formato, int $anio, string $mes, int $psicologoFiltro): void {
         require_once __DIR__ . '/../helpers/PDFHelper.php';
         require_once __DIR__ . '/../helpers/ExcelHelper.php';
+        require_once __DIR__ . '/../helpers/ChartHelper.php';
         
         // Obtener los mismos datos que la vista
         $citaModel = new Cita();
@@ -927,6 +928,77 @@ class AdminController {
             
             $html .= '</tbody>
     </table>
+    
+    <div class="page-break"></div>';
+    
+    // Generar gráficas con ChartHelper
+    // 1. Citas por mes
+    $stCitasMes = $pdo->prepare("
+        SELECT DATE_FORMAT(c.fecha_hora, '%m-%Y') as mes, COUNT(*) as total
+        FROM Cita c
+        WHERE YEAR(c.fecha_hora) = ?
+        " . ($psicologoFiltro ? "AND c.id_psicologo = ?" : "") . "
+        GROUP BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+        ORDER BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+    ");
+    $paramsMes = [$anio];
+    if($psicologoFiltro) $paramsMes[] = $psicologoFiltro;
+    $stCitasMes->execute($paramsMes);
+    $citasPorMesData = $stCitasMes->fetchAll(PDO::FETCH_ASSOC);
+    
+    $mesesLabels = array_column($citasPorMesData, 'mes');
+    $mesesData = array_column($citasPorMesData, 'total');
+    $chartCitasMes = ChartHelper::generarBarChart($mesesData, $mesesLabels, 'Citas por Mes', 700, 300);
+    
+    // 2. Citas por estado
+    $stEstado = $pdo->prepare("
+        SELECT estado_cita as estado, COUNT(*) as total
+        FROM Cita c
+        WHERE $whereSQL
+        GROUP BY estado_cita
+    ");
+    $stEstado->execute($params);
+    $citasPorEstadoData = $stEstado->fetchAll(PDO::FETCH_ASSOC);
+    
+    $estadosLabels = [];
+    $estadosData = [];
+    foreach($citasPorEstadoData as $est) {
+        $estadosLabels[] = ucfirst($est['estado']);
+        $estadosData[] = (int)$est['total'];
+    }
+    $chartEstado = ChartHelper::generarPieChart($estadosData, $estadosLabels, 'Citas por Estado', 600, 350);
+    
+    // 3. Ingresos por mes
+    $stIngresosMes = $pdo->prepare("
+        SELECT DATE_FORMAT(c.fecha_hora, '%m-%Y') as mes, COALESCE(SUM(p.monto_total), 0) as total
+        FROM Pago p
+        JOIN Cita c ON p.id_cita = c.id
+        WHERE YEAR(c.fecha_hora) = ?
+        " . ($psicologoFiltro ? "AND c.id_psicologo = ?" : "") . "
+          AND p.estado_pago = 'pagado'
+        GROUP BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+        ORDER BY DATE_FORMAT(c.fecha_hora, '%Y-%m')
+    ");
+    $stIngresosMes->execute($paramsMes);
+    $ingresosPorMesData = $stIngresosMes->fetchAll(PDO::FETCH_ASSOC);
+    
+    $ingresosLabels = array_column($ingresosPorMesData, 'mes');
+    $ingresosData = array_map('floatval', array_column($ingresosPorMesData, 'total'));
+    $chartIngresos = ChartHelper::generarLineChart($ingresosData, $ingresosLabels, 'Ingresos por Mes', 700, 300);
+    
+    $html .= '
+    <h2>Graficas Estadisticas</h2>
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="' . $chartCitasMes . '" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
+    
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="' . $chartEstado . '" style="width: 80%; max-width: 600px; margin-bottom: 15px;">
+    </div>
+    
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="' . $chartIngresos . '" style="width: 100%; max-width: 700px; margin-bottom: 15px;">
+    </div>
     
     <div class="page-break"></div>
     
