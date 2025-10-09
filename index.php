@@ -421,6 +421,7 @@ if (empty($_GET['url']) && (isset($_GET['c']) || isset($_GET['a']))) {
         crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"
         crossorigin="anonymous"></script>
+<script src="<?= RUTA ?>public/js/responsive-tables.js"></script>
 </body>
 
 </html>

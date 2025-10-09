@@ -6,8 +6,11 @@ $mesActual = date('m');
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h1 class="h3 mb-0"><i class="fas fa-chart-bar me-2"></i>Estadísticas del Sistema</h1>
   <div class="btn-group">
-    <button type="button" class="btn btn-danger" onclick="exportarPDF()">
-      <i class="fas fa-file-pdf me-1"></i>Exportar PDF
+    <button type="button" class="btn btn-danger" onclick="exportarPDFGraficas()">
+      <i class="fas fa-file-pdf me-1"></i>PDF Gráficas
+    </button>
+    <button type="button" class="btn btn-warning" onclick="exportarPDFDatos()">
+      <i class="fas fa-file-pdf me-1"></i>PDF Datos
     </button>
     <button type="button" class="btn btn-success" onclick="exportarExcel()">
       <i class="fas fa-file-excel me-1"></i>Exportar Excel
@@ -348,9 +351,15 @@ new Chart(document.getElementById('chartIngresosPorMes'), {
 });
 
 // Funciones de exportación
-function exportarPDF() {
+function exportarPDFGraficas() {
   const params = new URLSearchParams(window.location.search);
-  params.set('export', 'pdf');
+  params.set('export', 'pdf_graficas');
+  window.open('<?= url('admin','estadisticas') ?>?' + params.toString(), '_blank');
+}
+
+function exportarPDFDatos() {
+  const params = new URLSearchParams(window.location.search);
+  params.set('export', 'pdf_datos');
   window.open('<?= url('admin','estadisticas') ?>?' + params.toString(), '_blank');
 }
 
