@@ -151,10 +151,10 @@ class ExcelHelper
 
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
-            $contentTypes .= '\n    <Override PartName="/xl/worksheets/sheet' . $sheetIndex . '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+            $contentTypes .= PHP_EOL . '    <Override PartName="/xl/worksheets/sheet' . $sheetIndex . '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
             $sheetIndex++;
         }
-        $contentTypes .= '\n</Types>';
+        $contentTypes .= PHP_EOL . '</Types>';
         file_put_contents($tmpDir . '/[Content_Types].xml', $contentTypes);
 
         // _rels/.rels
@@ -175,24 +175,24 @@ class ExcelHelper
         file_put_contents($tmpDir . '/docProps/core.xml', $core);
 
         // xl/workbook.xml
-        $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">\n    <sheets>';
+        $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . PHP_EOL . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' . PHP_EOL . '    <sheets>';
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
             $safeName = self::sanitizeSheetName($sheetName);
-            $workbook .= '\n        <sheet name="' . htmlspecialchars($safeName) . '" sheetId="' . $sheetIndex . '" r:id="rId' . $sheetIndex . '"/>';
+            $workbook .= PHP_EOL . '        <sheet name="' . htmlspecialchars($safeName) . '" sheetId="' . $sheetIndex . '" r:id="rId' . $sheetIndex . '"/>';
             $sheetIndex++;
         }
-        $workbook .= '\n    </sheets>\n</workbook>';
+        $workbook .= PHP_EOL . '    </sheets>' . PHP_EOL . '</workbook>';
         file_put_contents($tmpDir . '/xl/workbook.xml', $workbook);
 
         // xl/_rels/workbook.xml.rels
-        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . PHP_EOL . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
-            $workbookRels .= '\n    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' . $sheetIndex . '.xml"/>';
+            $workbookRels .= PHP_EOL . '    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' . $sheetIndex . '.xml"/>';
             $sheetIndex++;
         }
-        $workbookRels .= '\n    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>\n</Relationships>';
+        $workbookRels .= PHP_EOL . '    <Relationship Id="rId' . $sheetIndex . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' . PHP_EOL . '</Relationships>';
         file_put_contents($tmpDir . '/xl/_rels/workbook.xml.rels', $workbookRels);
 
         // xl/styles.xml (con colores)
@@ -227,7 +227,7 @@ class ExcelHelper
         // Generar cada hoja
         $sheetIndex = 1;
         foreach ($sheets as $sheetName => $sheetData) {
-            $worksheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n    <sheetData>';
+            $worksheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . PHP_EOL . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' . PHP_EOL . '    <sheetData>';
 
             $rowNum = 1;
 
@@ -240,12 +240,12 @@ class ExcelHelper
             }
 
             // Título hoja
-            $worksheet .= '\n        <row r="' . $rowNum . '">\n            <c r="A' . $rowNum . '" s="1" t="inlineStr"><is><t>' . htmlspecialchars($sheetName) . '</t></is></c>\n        </row>';
+            $worksheet .= PHP_EOL . '        <row r="' . $rowNum . '">' . PHP_EOL . '            <c r="A' . $rowNum . '" s="1" t="inlineStr"><is><t>' . htmlspecialchars($sheetName) . '</t></is></c>' . PHP_EOL . '        </row>';
             $rowNum += 2;
 
             // Headers si existen
             if (!empty($sheetData['headers'])) {
-                $worksheet .= '\n        <row r="' . $rowNum . '">';
+                $worksheet .= PHP_EOL . '        <row r="' . $rowNum . '">';
                 $colIdx = 0;
                 foreach ($sheetData['headers'] as $header) {
                     $colLetter = self::getColumnLetter($colIdx + 1);
@@ -270,18 +270,17 @@ class ExcelHelper
                         $raw = is_string($cellValue) ? $cellValue : (string) $cellValue;
                         $cleanValue = str_replace(['$', ','], '', $raw);
                         if ($cleanValue !== '' && is_numeric($cleanValue)) {
-                            $worksheet .= '\n            <c r="' . $colLetter . $rowNum . '" s="' . $style . '"><v>' . htmlspecialchars($cleanValue) . '</v></c>';
+                            $worksheet .= PHP_EOL . '            <c r="' . $colLetter . $rowNum . '" s="' . $style . '"><v>' . htmlspecialchars($cleanValue) . '</v></c>';
                         } else {
-                            $worksheet .= '\n            <c r="' . $colLetter . $rowNum . '" s="' . $style . '" t="inlineStr"><is><t>' . htmlspecialchars($raw) . '</t></is></c>';
+                                    $worksheet .= PHP_EOL . '            <c r="' . $colLetter . $rowNum . '" s="' . $style . '" t="inlineStr"><is><t>' . htmlspecialchars($raw) . '</t></is></c>';
                         }
                         $colIdx++;
                     }
-                    $worksheet .= '\n        </row>';
+                            $worksheet .= PHP_EOL . '        </row>';
                     $rowNum++;
                 }
             }
-
-            $worksheet .= '\n    </sheetData>\n</worksheet>';
+                    $worksheet .= PHP_EOL . '    </sheetData>' . PHP_EOL . '</worksheet>';
             file_put_contents($tmpDir . '/xl/worksheets/sheet' . $sheetIndex . '.xml', $worksheet);
             $sheetIndex++;
         }
@@ -308,6 +307,12 @@ class ExcelHelper
         }
 
         $zip->close();
+
+        // If running from CLI, output path and keep files for inspection (useful for tests)
+        if (PHP_SAPI === 'cli') {
+            echo $zipFile . PHP_EOL;
+            return;
+        }
 
         // Enviar archivo
         if (ob_get_level())
